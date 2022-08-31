@@ -1,0 +1,34 @@
+# this is a deployment for the tracegen utility that is delivered with Jaeger
+# use with care, as it generates quite some load in the current setting
+# this deployment was especially designed to test the autoscaling capabilities
+# and requires an instance named 'simple-prod'.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tracegen
+# annotations:
+#   "sidecar.jaegertracing.io/inject": "simple-prod"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tracegen
+  template:
+    metadata:
+      labels:
+        app: tracegen
+    spec:
+      containers:
+      - name: tracegen
+        image: jaegertracing/jaeger-tracegen:1.36.0
+        args:
+        - -duration=5m
+        - -workers=5
+        env:
+#       - name: JAEGER_AGENT_HOST
+#         value: tobs-opentelemetry-collector.tobs
+#       - name: JAEGER_AGENT_PORT
+#         value: "6831"
+        - name: JAEGER_ENDPOINT
+          value: http://simple-prod-collector:14268/api/traces
+          #value: http://tobs-opentelemetry-collector.tobs:14268/api/traces

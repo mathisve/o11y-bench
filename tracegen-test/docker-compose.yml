@@ -1,0 +1,25 @@
+services:
+  tracegen:
+    image: jaegertracing/jaeger-tracegen:1.37
+    deploy:
+      mode: replicated
+      replicas: 5
+    command: -duration 10000s -workers 100 -pause 1ms -service jaeger
+    environment:
+      - JAEGER_AGENT_HOST=jaeger
+      - JAEGER_AGENT_PORT=6831 
+    networks:
+      - jaeger-example
+    depends_on:
+      - jaeger
+  jaeger:    
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "6831:6831/udp"
+      - "16686:16686"
+      - "14269:14269"
+    networks:
+      - jaeger-example
+
+networks:
+  jaeger-example:

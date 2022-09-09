@@ -15,7 +15,7 @@ spec:
           #tls.ca: /es/secrets/ca.crt
         tls.skip-host-verify: true
         username: elastic
-        password: 2ftdw1L4305KjIUvT87S0Ra6
+        password: x4gDD9b0C3OFf272Xl4s9i7i
     #secretName: jaeger-secret
   volumeMounts:
     - name: secrets

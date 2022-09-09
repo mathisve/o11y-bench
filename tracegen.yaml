@@ -31,4 +31,4 @@ spec:
 #         value: "6831"
         - name: JAEGER_ENDPOINT
           value: http://simple-prod-collector:14268/api/traces
-          #value: http://tobs-opentelemetry-collector.tobs:14268/api/traces
+          # value: http://tobs-opentelemetry-collector.tobs:14268/api/traces

@@ -15,8 +15,8 @@ Then apply that too
 ### port forwarding:
 `kubectl port-forward svc/quickstart-kb-http 5601` will get you Kibana, good to see if data ingestion via Jaeger 
 is even working
-`kubectl port-forward svc/tobs-grafana 3000:80`  will get you grafana (password can be found via kubectl get 
-`secret --namespace tobs tobs-grafana -o jsonpath="{.data.admin-password}" | base64 --decode`
+`kubectl port-forward svc/tobs-grafana 3000:80`  will get you grafana (password can be found via 
+`kubectl get secret --namespace tobs tobs-grafana -o jsonpath="{.data.admin-password}" | base64 --decode`
 
 Promscale logs will show you data flowing through there
 

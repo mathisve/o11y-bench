@@ -1,3 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tracegen
+
+---
 # this is a deployment for the tracegen utility that is delivered with Jaeger
 # use with care, as it generates quite some load in the current setting
 # this deployment was especially designed to test the autoscaling capabilities
@@ -6,6 +12,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: tracegen
+  namespace: tracegen
 # annotations:
 #   "sidecar.jaegertracing.io/inject": "simple-prod"
 spec:
@@ -18,6 +25,18 @@ spec:
       labels:
         app: tracegen
     spec:
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - jaeger
+                - tobs-promscale
+                - tobs-timescaledb
+            topologyKey: kubernetes.io/hostname
       containers:
       - name: tracegen
         image: jaegertracing/jaeger-tracegen:1.36.0

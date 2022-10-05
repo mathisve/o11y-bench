@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 1s
+  evaluation_interval: 1s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+    - targets:
+      - prometheus:9090
+  - job_name: jaeger
+    static_configs:
+    - targets:
+      - jaeger:14269
+  - job_name: tracegen
+    static_configs:
+    - targets:
+      - tracegen:2112

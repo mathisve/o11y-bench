@@ -16,7 +16,7 @@ metadata:
 # annotations:
 #   "sidecar.jaegertracing.io/inject": "simple-prod"
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: tracegen
@@ -41,13 +41,14 @@ spec:
       - name: tracegen
         image: jaegertracing/jaeger-tracegen:1.36.0
         args:
-        - -duration=5m
-        - -workers=5
+        - -duration=20m
+        - -workers=400
+        - -pause=7ms
         env:
 #       - name: JAEGER_AGENT_HOST
 #         value: tobs-opentelemetry-collector.tobs
 #       - name: JAEGER_AGENT_PORT
 #         value: "6831"
         - name: JAEGER_ENDPOINT
-          value: http://simple-prod-collector:14268/api/traces
+          value: http://simple-prod-collector.default:14268/api/traces
           # value: http://tobs-opentelemetry-collector.tobs:14268/api/traces

@@ -29,3 +29,7 @@ I think you’ll also need to inject pod-anti-affinity rules (maybe just manuall
 results
 
 Any Q’s ask me early, always here to help (and love this stuff too so keen to help)
+
+
+            - name: GRPC_STORAGE_SERVER
+              value: tobs-promscale.tobs:9202

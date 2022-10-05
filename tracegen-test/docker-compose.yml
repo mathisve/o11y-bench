@@ -3,23 +3,64 @@ services:
     image: jaegertracing/jaeger-tracegen:1.37
     deploy:
       mode: replicated
-      replicas: 5
-    command: -duration 10000s -workers 100 -pause 1ms -service jaeger
+      replicas: 1
+    command: -duration 10000s -workers 100 -pause 10ms -service tracegen
     environment:
-      - JAEGER_AGENT_HOST=jaeger
-      - JAEGER_AGENT_PORT=6831 
+      - JAEGER_ENDPOINT=http://jaeger:14268/api/traces
     networks:
       - jaeger-example
     depends_on:
       - jaeger
+    restart: always
+
   jaeger:    
     image: jaegertracing/all-in-one:latest
+    # image: jaegertracing/jaeger-collector:1.38.0
+    environment:
+      - SPAN_STORAGE_TYPE=memory
     ports:
       - "6831:6831/udp"
       - "16686:16686"
       - "14269:14269"
     networks:
       - jaeger-example
+    restart: always
+
+  prometheus:
+    image: prom/prometheus:v2.36.2
+    volumes:
+      - ./prometheus/:/etc/prometheus/
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - 9090:9090
+    networks:
+      - jaeger-example
+    restart: always
+#    deploy:
+#      placement:
+#        constraints:
+#          - node.hostname == ${HOSTNAME}
+
+  grafana:
+    image: grafana/grafana
+    depends_on:
+      - prometheus
+    ports:
+      - 3000:3000
+    networks:
+      - jaeger-example
+    volumes:
+      - grafana_data:/var/lib/grafana
+    restart: always
 
 networks:
   jaeger-example:
+
+volumes:
+  prometheus_data: {}
+  grafana_data: {}

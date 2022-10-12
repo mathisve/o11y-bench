@@ -1,1 +1,1 @@
-```helm upgrade --install tobs timescale/tobs -f values.yaml -n tobs```
+```helm upgrade --install tobs timescale/tobs -f helm/values.yaml -n tobs```

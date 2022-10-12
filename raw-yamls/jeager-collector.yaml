@@ -1,0 +1,212 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simple-prod-collector
+  namespace: default
+  uid: 45ac5f40-9b3b-4afb-85cf-9500b232d6ff
+  resourceVersion: '36432775'
+  generation: 12
+  creationTimestamp: '2022-10-04T23:33:56Z'
+  labels:
+    app: jaeger
+    app.kubernetes.io/component: collector
+    app.kubernetes.io/instance: simple-prod
+    app.kubernetes.io/managed-by: jaeger-operator
+    app.kubernetes.io/name: simple-prod-collector
+    app.kubernetes.io/part-of: jaeger
+  annotations:
+    deployment.kubernetes.io/revision: '8'
+    linkerd.io/inject: disabled
+    prometheus.io/port: '14269'
+    prometheus.io/scrape: 'true'
+  ownerReferences:
+    - apiVersion: jaegertracing.io/v1
+      kind: Jaeger
+      name: simple-prod
+      uid: 05a20c08-89f5-48bc-9329-3c4ef7262b5d
+      controller: true
+  managedFields:
+    - manager: node-fetch
+      operation: Update
+      apiVersion: apps/v1
+      fieldsType: FieldsV1
+      fieldsV1:
+        f:spec:
+          f:replicas: {}
+      subresource: scale
+    - manager: jaeger-operator
+      operation: Update
+      apiVersion: apps/v1
+      time: '2022-10-04T23:33:56Z'
+      fieldsType: FieldsV1
+      fieldsV1:
+        f:metadata:
+      subresource: status
+  selfLink: /apis/apps/v1/namespaces/default/deployments/simple-prod-collector
+status:
+  observedGeneration: 12
+  replicas: 1
+  updatedReplicas: 1
+  readyReplicas: 1
+  availableReplicas: 1
+  conditions:
+    - type: Progressing
+      status: 'True'
+      lastUpdateTime: '2022-10-05T14:43:12Z'
+      lastTransitionTime: '2022-10-04T23:33:56Z'
+      reason: NewReplicaSetAvailable
+      message: >-
+        ReplicaSet "simple-prod-collector-784cfb4dbb" has successfully
+        progressed.
+    - type: Available
+      status: 'True'
+      lastUpdateTime: '2022-10-05T17:55:12Z'
+      lastTransitionTime: '2022-10-05T17:55:12Z'
+      reason: MinimumReplicasAvailable
+      message: Deployment has minimum availability.
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jaeger
+      app.kubernetes.io/component: collector
+      app.kubernetes.io/instance: simple-prod
+      app.kubernetes.io/managed-by: jaeger-operator
+      app.kubernetes.io/name: simple-prod-collector
+      app.kubernetes.io/part-of: jaeger
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: jaeger
+        app.kubernetes.io/component: collector
+        app.kubernetes.io/instance: simple-prod
+        app.kubernetes.io/managed-by: jaeger-operator
+        app.kubernetes.io/name: simple-prod-collector
+        app.kubernetes.io/part-of: jaeger
+      annotations:
+        linkerd.io/inject: disabled
+        prometheus.io/port: '14269'
+        prometheus.io/scrape: 'true'
+        sidecar.istio.io/inject: 'false'
+    spec:
+      volumes:
+        - name: plugin-config
+          configMap:
+            name: jaeger-grpc
+            defaultMode: 420
+        - name: simple-prod-sampling-configuration-volume
+          configMap:
+            name: simple-prod-sampling-configuration
+            items:
+              - key: sampling
+                path: sampling.json
+            defaultMode: 420
+        - name: plugin-volume
+          emptyDir: {}
+      initContainers:
+        - name: install-plugin
+          image: busybox
+          resources: {}
+          volumeMounts:
+            - name: plugin-config
+              mountPath: /plugin-config
+            - name: simple-prod-sampling-configuration-volume
+              readOnly: true
+              mountPath: /etc/jaeger/sampling
+            - name: plugin-volume
+              mountPath: /plugin
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          imagePullPolicy: Always
+      containers:
+        - name: jaeger-collector
+          image: jaegertracing/jaeger-collector:1.38.0
+          args:
+            - >-
+              --grpc-storage-plugin.configuration-file=/plugin-config/config.yaml
+            - '--grpc-storage-plugin.log-level=debug'
+            - '--sampling.strategies-file=/etc/jaeger/sampling/sampling.json'
+            - '--log-level=debug'
+            - '--collector.queue-size=100000'
+          ports:
+            - name: zipkin
+              containerPort: 9411
+              protocol: TCP
+            - name: c-tchan-trft
+              containerPort: 14267
+              protocol: TCP
+            - name: c-binary-trft
+              containerPort: 14268
+              protocol: TCP
+            - name: admin-http
+              containerPort: 14269
+              protocol: TCP
+            - name: grpc
+              containerPort: 14250
+              protocol: TCP
+            - name: otlp-grpc
+              containerPort: 4317
+              protocol: TCP
+            - name: otlp-http
+              containerPort: 4318
+              protocol: TCP
+          env:
+            - name: GRPC_STORAGE_SERVER
+              value: tobs-promscale.tobs:9202
+            - name: SPAN_STORAGE_TYPE
+              value: grpc-plugin
+            - name: COLLECTOR_ZIPKIN_HOST_PORT
+              value: ':9411'
+            - name: COLLECTOR_OTLP_ENABLED
+              value: 'true'
+          resources: 
+            limits:
+              cpu: 5000m
+              memory: 4Gi
+            requests:
+              cpu: 4000m
+              memory: 4Gi
+          volumeMounts:
+            - name: plugin-config
+              mountPath: /plugin-config
+            - name: simple-prod-sampling-configuration-volume
+              readOnly: true
+              mountPath: /etc/jaeger/sampling
+            - name: plugin-volume
+              mountPath: /plugin
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 14269
+              scheme: HTTP
+            initialDelaySeconds: 5
+            timeoutSeconds: 1
+            periodSeconds: 15
+            successThreshold: 1
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 14269
+              scheme: HTTP
+            initialDelaySeconds: 1
+            timeoutSeconds: 1
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 3
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          imagePullPolicy: IfNotPresent
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
+      serviceAccountName: simple-prod
+      serviceAccount: simple-prod
+      securityContext: {}
+      schedulerName: default-scheduler
+      enableServiceLinks: false
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 10
+  progressDeadlineSeconds: 600

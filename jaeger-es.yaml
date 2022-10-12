@@ -3,8 +3,15 @@ apiVersion: jaegertracing.io/v1
 kind: Jaeger
 metadata:
   name: simple-prod
+  namespace: default
 spec:
   strategy: production
+  collector:
+    maxReplicas: 4
+    resources:
+      limits:
+        cpu: 4000m
+        memory: 2Gi
   storage:
     type: elasticsearch
     options:
@@ -15,7 +22,7 @@ spec:
           #tls.ca: /es/secrets/ca.crt
         tls.skip-host-verify: true
         username: elastic
-        password: t1IKQ5En86Bn84F1N4MfKT27
+        password: 89xf0w2Hd86BhbkyF69Z4V6N
     #secretName: jaeger-secret
   volumeMounts:
     - name: secrets

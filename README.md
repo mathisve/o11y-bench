@@ -1,10 +1,10 @@
 ### to get it back to a “good” state:
 
 ```
-kubectl delete -f tracegen.yaml,jaeger.yaml,es.yaml
+kubectl delete -f tracegen.yaml,jaeger-es.yaml,es.yaml
 kubectl apply -f es.yaml
-sed -i -E "s/password: .*/password: `kubectl get secret elasticsearch-sample-es-elastic-user -o jsonpath="{.data.elastic}" | base64 --decode`/" jaeger.yaml
-kubectl apply -f jaeger.yaml
+sed -i -E "s/password: .*/password: `kubectl get secret elasticsearch-sample-es-elastic-user -n default -o jsonpath="{.data.elastic}" | base64 --decode`/" jaeger-es.yaml
+kubectl apply -f jaeger-es.yaml
 ```
 
 Then you want to edit tracegen.yaml to either point to http://simple-prod-collector:14268/api/traces or 

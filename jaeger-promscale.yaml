@@ -19,25 +19,3 @@ spec:
     - name: plugin-config
       configMap:
         name: jaeger-grpc
-
----
-apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
-metadata:
-  name: jaeger
-spec:
-  interval: 1s
-  selector:
-    matchLabels:
-      app: jaeger
-  podMetricsEndpoints:
-  - port: admin-http
-
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: jaeger-grpc
-data:
-  config.yaml: |
-    GRPC_STORAGE_SERVER=tobs-promscale.tobs:9202

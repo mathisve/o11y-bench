@@ -6,24 +6,28 @@ metadata:
   namespace: default
 spec:
   strategy: production
-  collector:
-    maxReplicas: 4
+  query:
+    replicas: 1
+    serviceType: LoadBalancer
     resources:
-      limits:
+      requests:
+        cpu: 4000m
+        memory: 2Gi
+  collector:
+    replicas: 4
+    autoscale: false
+    resources:
+      requests:
         cpu: 4000m
         memory: 2Gi
   storage:
     type: elasticsearch
     options:
       es:
-        # Note: This assumes elasticsearch is running in the "default" namespace.
         server-urls: https://elasticsearch-sample-es-http:9200
-          #use-aliases: true
-          #tls.ca: /es/secrets/ca.crt
         tls.skip-host-verify: true
         username: elastic
-        password: 89xf0w2Hd86BhbkyF69Z4V6N
-    #secretName: jaeger-secret
+        password: M1np29Szf4Rr8gA4XVU7337D
   volumeMounts:
     - name: secrets
       mountPath: /es/secrets/

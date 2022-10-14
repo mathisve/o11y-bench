@@ -27,13 +27,13 @@ spec:
           resources:
             requests: 
               memory: 30Gi
-              cpu: 6
+              cpu: 10
             limits:
               memory: 40Gi
-              cpu: 10
+              cpu: 15
           env:
           - name: ES_JAVA_OPTS
-            value: "-Xms2g -Xmx2g"
+            value: "-Xms30g -Xmx30g"
 
     count: 3
   #   # request 2Gi of persistent data storage for pods in this topology element

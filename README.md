@@ -16,9 +16,9 @@ kubectl apply -f jaeger-es.yaml
 kubectl apply -f jaeger-es.yaml
 ```
 
-After Jaeger created all the pods, set the replicas to 0 for the `jaeger-operator`.
+After Jaeger created all the pods, set the replicas to 0 for the `jaeger-operator`. Otherwise it will overwrite the following changes.
 
-Manually these args to the `jaeger-collector` pod in the `simple-prod-collector` deployment:
+Manually add these args to the `jaeger-collector` pod in the `simple-prod-collector` deployment:
 ```
 - '--collector.num-workers=1000'
 - '--collector.queue-size=100000'
@@ -56,13 +56,13 @@ kubectl apply -f jaeger-promscale.yaml
 
 After Jaeger created all the pods, set the replicas to 0 for the `jaeger-operator`.
 
-Manually env vars to the `jaeger-collector` and `jaeger-query` pod in the `simple-prod-collector` deployment and `simple-prod-query` deployment respectively:
+Manually add this env var to the `jaeger-collector` and `jaeger-query` pod in the `simple-prod-collector` deployment and `simple-prod-query` deployment respectively:
 ```
 - name: GRPC_STORAGE_SERVER
   value: tobs-promscale.tobs:9202
 ```
 
-Manually these args to the `jaeger-collector` pod in the `simple-prod-collector` deployment:
+Manually add these args to the `jaeger-collector` pod in the `simple-prod-collector` deployment:
 ```
 - '--collector.num-workers=1000'
 - '--collector.queue-size=100000'

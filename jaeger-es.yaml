@@ -3,20 +3,31 @@ apiVersion: jaegertracing.io/v1
 kind: Jaeger
 metadata:
   name: simple-prod
+  namespace: default
 spec:
   strategy: production
+  query:
+    replicas: 1
+    serviceType: LoadBalancer
+    resources:
+      requests:
+        cpu: 4000m
+        memory: 2Gi
+  collector:
+    replicas: 4
+    autoscale: false
+    resources:
+      requests:
+        cpu: 4000m
+        memory: 2Gi
   storage:
     type: elasticsearch
     options:
       es:
-        # Note: This assumes elasticsearch is running in the "default" namespace.
         server-urls: https://elasticsearch-sample-es-http:9200
-          #use-aliases: true
-          #tls.ca: /es/secrets/ca.crt
         tls.skip-host-verify: true
         username: elastic
-        password: t1IKQ5En86Bn84F1N4MfKT27
-    #secretName: jaeger-secret
+        password: 9wq50F79vDy91U6csklT5li7
   volumeMounts:
     - name: secrets
       mountPath: /es/secrets/

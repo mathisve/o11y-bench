@@ -1,0 +1,3598 @@
+---
+# Source: tobs/charts/opentelemetry-operator/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  labels:
+    app.kubernetes.io/name: opentelemetry-operator
+  name: opentelemetry-operator-controller-manager
+  namespace: tobs
+---
+# Source: tobs/charts/promscale/templates/service-account.yaml
+apiVersion: v1
+kind: ServiceAccount
+automountServiceAccountToken: false
+metadata:
+  name: release-name-promscale
+  namespace: tobs
+  labels:
+    app: release-name-promscale
+    chart: promscale-14.2.0
+    release: release-name
+    heritage: Helm
+    app.kubernetes.io/name: "release-name-promscale"
+    app.kubernetes.io/version: 0.14.0
+    app.kubernetes.io/component: "connector"
+---
+# Source: tobs/charts/timescaledb-single/templates/serviceaccount-timescaledb.yaml
+# This file and its contents are licensed under the Apache License 2.0.
+# Please see the included NOTICE for copyright information and LICENSE for a copy of the license.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: release-name-timescaledb
+  namespace: tobs
+  labels:
+    app: release-name-timescaledb
+    chart: timescaledb-single-0.17.0
+    release: release-name
+    heritage: Helm
+    cluster-name: release-name
+    app.kubernetes.io/name: "release-name-timescaledb"
+    app.kubernetes.io/version: 0.17.0
+    app.kubernetes.io/component: rbac
+---
+# Source: tobs/templates/connection-secret-job.yaml
+apiVersion: v1
+kind: ServiceAccount
+#automountServiceAccountToken is needed to since password-initializer.sh is
+#using kubectl to access the Kubernetes api
+automountServiceAccountToken: true
+metadata:
+  name: release-name-promscale-initializer-sa
+  namespace: tobs
+  labels:
+    app: release-name-tobs
+    chart: tobs-15.1.1
+    release: release-name
+    heritage: Helm
+---
+# Source: tobs/templates/connection-secret-job.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tobs-promscale-connection
+  namespace: tobs
+  annotations:
+    "helm.sh/resource-policy": keep
+  labels:
+    app: release-name-tobs
+    chart: tobs-15.1.1
+    release: release-name
+    heritage: Helm
+stringData:
+  PROMSCALE_DB_PORT: "5432"
+  PROMSCALE_DB_HOST: "release-name.tobs.svc"
+  PROMSCALE_DB_NAME: "postgres"
+  PROMSCALE_DB_USER: "postgres"
+  PROMSCALE_DB_SSL_MODE: "require"
+  PROMSCALE_DB_PASSWORD: "PLACEHOLDER"
+---
+# Source: tobs/templates/grafana-datasources-sec.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: release-name-grafana-datasources
+  namespace: tobs
+  labels:
+    tobs_datasource: "true"
+    app: release-name-tobs
+    chart: tobs-15.1.1
+    release: release-name
+type: Opaque
+stringData:
+  datasource.yaml: |-
+    # config file version
+    apiVersion: 1
+
+    datasources:
+      - name: Promscale-PromQL
+        type: prometheus
+        url: http://release-name-promscale.tobs.svc:9201
+        isDefault: true
+        editable: true
+        access: proxy
+        # SHA256 of datasource name cut to 40 chars as in: `sha256sum <<< Promscale-PromQL | cut -c1-40`
+        uid: dc08d25c8f267b054f12002f334e6d3d32a853e4
+      - name: Promscale-Tracing
+        type: jaeger
+        url: release-name-promscale.tobs.svc:9201
+        editable: true
+        access: proxy
+        # SHA256 of datasource name cut to 40 chars as in: `sha256sum <<< Promscale-Tracing | cut -c1-40`
+        uid: f78291126102e0f2e841734d1e90250257543042
+      - name: Promscale-SQL
+        url: release-name.tobs.svc:5432
+        type: postgres
+        isDefault: false
+        access: proxy
+        # SHA256 of datasource name cut to 40 chars as in: `sha256sum <<< Promscale-SQL | cut -c1-40`
+        uid: c4729dfb8ceeaa0372ef27403a3932695eee995d
+        user: grafana
+        database: postgres
+        editable: true
+        secureJsonData:
+          password: ${GRAFANA_PASSWORD}
+        jsonData:
+          sslmode: require
+          postgresVersion: 1000
+          timescaledb: true
+---
+# Source: tobs/templates/grafana-db-sec.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: release-name-grafana-db
+  namespace: tobs
+  labels:
+    app: release-name-tobs
+    chart: tobs-15.1.1
+    release: release-name
+  annotations:
+    "helm.sh/resource-policy": keep
+type: Opaque
+data:
+  GF_DATABASE_TYPE: c3FsaXRlMw==
+---
+# Source: tobs/templates/secret-scrape-config.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tobs-scrape-config
+  namespace: tobs
+  labels:
+    app: release-name-tobs
+    chart: tobs-15.1.1
+    release: release-name
+  annotations:
+    "helm.sh/resource-policy": keep
+type: Opaque
+stringData:
+  additional-scrape-config.yaml: |-
+    - job_name: kubernetes-service-endpoints
+      kubernetes_sd_configs:
+        - role: endpoints
+      relabel_configs:
+        - action: keep
+          regex: true
+          source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_scrape
+        - action: replace
+          regex: (https?)
+          source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_scheme
+          target_label: __scheme__
+        - action: replace
+          regex: (.+)
+          source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_path
+          target_label: __metrics_path__
+        - action: replace
+          regex: ([^:]+)(?::\d+)?;(\d+)
+          replacement: $1:$2
+          source_labels:
+            - __address__
+            - __meta_kubernetes_service_annotation_prometheus_io_port
+          target_label: __address__
+        - action: labelmap
+          regex: __meta_kubernetes_service_label_(.+)
+        - action: replace
+          source_labels:
+            - __meta_kubernetes_namespace
+          target_label: kubernetes_namespace
+        - action: replace
+          source_labels:
+            - __meta_kubernetes_service_name
+          target_label: kubernetes_name
+        - action: replace
+          source_labels:
+            - __meta_kubernetes_pod_node_name
+          target_label: kubernetes_node
+    - job_name: kubernetes-service-endpoints-slow
+      kubernetes_sd_configs:
+        - role: endpoints
+      relabel_configs:
+        - action: keep
+          regex: true
+          source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_scrape_slow
+        - action: replace
+          regex: (https?)
+          source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_scheme
+          target_label: __scheme__
+        - action: replace
+          regex: (.+)
+          source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_path
+          target_label: __metrics_path__
+        - action: replace
+          regex: ([^:]+)(?::\d+)?;(\d+)
+          replacement: $1:$2
+          source_labels:
+            - __address__
+            - __meta_kubernetes_service_annotation_prometheus_io_port
+          target_label: __address__
+        - action: labelmap
+          regex: __meta_kubernetes_service_label_(.+)
+        - action: replace
+          source_labels:
+            - __meta_kubernetes_namespace
+          target_label: kubernetes_namespace
+        - action: replace
+          source_labels:
+            - __meta_kubernetes_service_name
+          target_label: kubernetes_name
+        - action: replace
+          source_labels:
+            - __meta_kubernetes_pod_node_name
+          target_label: kubernetes_node
+      scrape_interval: 5m
+      scrape_timeout: 30s
+    - job_name: kubernetes-services
+      kubernetes_sd_configs:
+        - role: service
+      metrics_path: /probe
+      params:
+        module:
+          - http_2xx
+      relabel_configs:
+        - action: keep
+          regex: true
+          source_labels:
+            - __meta_kubernetes_service_annotation_prometheus_io_probe
+        - source_labels:
+            - __address__
+          target_label: __param_target
+        - replacement: blackbox
+          target_label: __address__
+        - source_labels:
+            - __param_target
+          target_label: instance
+        - action: labelmap
+          regex: __meta_kubernetes_service_label_(.+)
+        - source_labels:
+            - __meta_kubernetes_namespace
+          target_label: kubernetes_namespace
+        - source_labels:
+            - __meta_kubernetes_service_name
+          target_label: kubernetes_name
+    - job_name: kubernetes-pods
+      kubernetes_sd_configs:
+        - role: pod
+      relabel_configs:
+        - action: keep
+          regex: true
+          source_labels:
+            - __meta_kubernetes_pod_annotation_prometheus_io_scrape
+        - action: replace
+          regex: (https?)
+          source_labels:
+            - __meta_kubernetes_pod_annotation_prometheus_io_scheme
+          target_label: __scheme__
+        - action: replace
+          regex: (.+)
+          source_labels:
+            - __meta_kubernetes_pod_annotation_prometheus_io_path
+          target_label: __metrics_path__
+        - action: replace
+          regex: ([^:]+)(?::\d+)?;(\d+)
+          replacement: $1:$2
+          source_labels:
+            - __address__
+            - __meta_kubernetes_pod_annotation_prometheus_io_port
+          target_label: __address__
+        - action: labelmap
+          regex: __meta_kubernetes_pod_label_(.+)
+        - action: replace
+          source_labels:
+            - __meta_kubernetes_namespace
+          target_label: kubernetes_namespace
+        - action: replace
+          source_labels:
+            - __meta_kubernetes_pod_name
+          target_label: kubernetes_pod_name
+        - action: drop
+          regex: Pending|Succeeded|Failed
+          source_labels:
+            - __meta_kubernetes_pod_phase
+    - job_name: kubernetes-pods-slow
+      kubernetes_sd_configs:
+        - role: pod
+      relabel_configs:
+        - action: keep
+          regex: true
+          source_labels:
+            - __meta_kubernetes_pod_annotation_prometheus_io_scrape_slow
+        - action: replace
+          regex: (https?)
+          source_labels:
+            - __meta_kubernetes_pod_annotation_prometheus_io_scheme
+          target_label: __scheme__
+        - action: replace
+          regex: (.+)
+          source_labels:
+            - __meta_kubernetes_pod_annotation_prometheus_io_path
+          target_label: __metrics_path__
+        - action: replace
+          regex: ([^:]+)(?::\d+)?;(\d+)
+          replacement: $1:$2
+          source_labels:
+            - __address__
+            - __meta_kubernetes_pod_annotation_prometheus_io_port
+          target_label: __address__
+        - action: labelmap
+          regex: __meta_kubernetes_pod_label_(.+)
+        - action: replace
+          source_labels:
+            - __meta_kubernetes_namespace
+          target_label: kubernetes_namespace
+        - action: replace
+          source_labels:
+            - __meta_kubernetes_pod_name
+          target_label: kubernetes_pod_name
+        - action: drop
+          regex: Pending|Succeeded|Failed
+          source_labels:
+            - __meta_kubernetes_pod_phase
+      scrape_interval: 5m
+      scrape_timeout: 30s
+---
+# Source: tobs/charts/timescaledb-single/templates/configmap-patroni.yaml
+# This file and its contents are licensed under the Apache License 2.0.
+# Please see the included NOTICE for copyright information and LICENSE for a copy of the license.---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: release-name-timescaledb-patroni
+  namespace: tobs
+  labels:
+    app: release-name-timescaledb
+    chart: timescaledb-single-0.17.0
+    release: release-name
+    heritage: Helm
+    cluster-name: release-name
+    app.kubernetes.io/name: "release-name-timescaledb"
+    app.kubernetes.io/version: 0.17.0
+    app.kubernetes.io/component: patroni
+data:
+  patroni.yaml: |
+    bootstrap:
+      dcs:
+        loop_wait: 10
+        maximum_lag_on_failover: 33554432
+        postgresql:
+          parameters:
+            archive_command: /etc/timescaledb/scripts/pgbackrest_archive.sh %p
+            archive_mode: "on"
+            archive_timeout: 1800s
+            autovacuum_analyze_scale_factor: 0.02
+            autovacuum_max_workers: 10
+            autovacuum_naptime: 5s
+            autovacuum_vacuum_cost_limit: 500
+            autovacuum_vacuum_scale_factor: 0.05
+            hot_standby: "on"
+            log_autovacuum_min_duration: 1min
+            log_checkpoints: "on"
+            log_connections: "on"
+            log_disconnections: "on"
+            log_line_prefix: '%t [%p]: [%c-%l] %u@%d,app=%a [%e] '
+            log_lock_waits: "on"
+            log_min_duration_statement: 1s
+            log_statement: ddl
+            max_connections: 100
+            max_prepared_transactions: 150
+            shared_preload_libraries: timescaledb,pg_stat_statements
+            ssl: "on"
+            ssl_cert_file: /etc/certificate/tls.crt
+            ssl_key_file: /etc/certificate/tls.key
+            tcp_keepalives_idle: 900
+            tcp_keepalives_interval: 100
+            temp_file_limit: 1GB
+            timescaledb.passfile: ../.pgpass
+            unix_socket_directories: /var/run/postgresql
+            unix_socket_permissions: "0750"
+            wal_level: hot_standby
+            wal_log_hints: "on"
+          use_pg_rewind: true
+          use_slots: true
+        retry_timeout: 10
+        ttl: 30
+      method: restore_or_initdb
+      post_init: /etc/timescaledb/scripts/post_init.sh
+      restore_or_initdb:
+        command: |
+          /etc/timescaledb/scripts/restore_or_initdb.sh --encoding=UTF8 --locale=C.UTF-8
+        keep_existing_recovery_conf: true
+    kubernetes:
+      role_label: role
+      scope_label: cluster-name
+      use_endpoints: true
+    log:
+      level: WARNING
+    postgresql:
+      authentication:
+        replication:
+          username: standby
+        superuser:
+          username: postgres
+      basebackup:
+      - waldir: /var/lib/postgresql/wal/pg_wal
+      callbacks:
+        on_reload: /etc/timescaledb/scripts/patroni_callback.sh
+        on_restart: /etc/timescaledb/scripts/patroni_callback.sh
+        on_role_change: /etc/timescaledb/scripts/patroni_callback.sh
+        on_start: /etc/timescaledb/scripts/patroni_callback.sh
+        on_stop: /etc/timescaledb/scripts/patroni_callback.sh
+      create_replica_methods:
+      - pgbackrest
+      - basebackup
+      listen: 0.0.0.0:5432
+      pg_hba:
+      - local     all             postgres                              peer
+      - local     all             all                                   md5
+      - hostnossl all,replication all                all                reject
+      - hostssl   all             all                127.0.0.1/32       md5
+      - hostssl   all             all                ::1/128            md5
+      - hostssl   replication     standby            all                md5
+      - hostssl   all             all                all                md5
+      pgbackrest:
+        command: /etc/timescaledb/scripts/pgbackrest_restore.sh
+        keep_data: true
+        no_master: true
+        no_params: true
+      recovery_conf:
+        restore_command: /etc/timescaledb/scripts/pgbackrest_archive_get.sh %f "%p"
+      use_unix_socket: true
+    restapi:
+      listen: 0.0.0.0:8008
+...
+---
+# Source: tobs/charts/timescaledb-single/templates/configmap-pgbackrest.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: release-name-timescaledb-pgbackrest
+  namespace: tobs
+  labels:
+    app: release-name-timescaledb
+    chart: timescaledb-single-0.17.0
+    release: release-name
+    heritage: Helm
+    cluster-name: release-name
+    app.kubernetes.io/name: "release-name-timescaledb"
+    app.kubernetes.io/version: 0.17.0
+    app.kubernetes.io/component: pgbackrest
+data:
+  pgbackrest.conf: |
+    [global]
+    compress-level=3
+    compress-type=lz4
+    process-max=4
+    repo1-cipher-type=none
+    repo1-path=/tobs/release-name/
+    repo1-retention-diff=2
+    repo1-retention-full=2
+    repo1-s3-endpoint=s3.amazonaws.com
+    repo1-s3-region=us-east-2
+    repo1-type=s3
+    spool-path=/var/run/postgresql
+    start-fast=y
+
+    [poddb]
+    pg1-port=5432
+    pg1-host-user=postgres
+    pg1-path=/var/lib/postgresql/data
+    pg1-socket-path=/var/run/postgresql
+
+    link-all=y
+
+    [global:archive-push]
+
+    [global:archive-get]
+...
+---
+# Source: tobs/charts/timescaledb-single/templates/configmap-scripts.yaml
+# This file and its contents are licensed under the Apache License 2.0.
+# Please see the included NOTICE for copyright information and LICENSE for a copy of the license.---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: release-name-timescaledb-scripts
+  namespace: tobs
+  labels:
+    app: release-name-timescaledb
+    chart: timescaledb-single-0.17.0
+    release: release-name
+    heritage: Helm
+    cluster-name: release-name
+    app.kubernetes.io/name: "release-name-timescaledb"
+    app.kubernetes.io/version: 0.17.0
+    app.kubernetes.io/component: scripts
+data:
+  # If no backup is configured, archive_command would normally fail. A failing archive_command on a cluster
+  # is going to cause WAL to be kept around forever, meaning we'll fill up Volumes we have quite quickly.
+  #
+  # Therefore, if the backup is disabled, we always return exitcode 0 when archiving
+  pgbackrest_archive.sh: |
+    #!/bin/sh
+
+    log() {
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - archive - $1"
+    }
+
+    [ -z "$1" ] && log "Usage: $0 <WALFILE or DIRECTORY>" && exit 1
+
+    PGBACKREST_BACKUP_ENABLED=0
+    [ ${PGBACKREST_BACKUP_ENABLED} -ne 0 ] || exit 0
+
+    . "${HOME}/.pgbackrest_environment"
+    exec pgbackrest --stanza=poddb archive-push "$@"
+  pgbackrest_archive_get.sh: |
+    #!/bin/sh
+    PGBACKREST_BACKUP_ENABLED=0
+    [ ${PGBACKREST_BACKUP_ENABLED} -ne 0 ] || exit 1
+
+    . "${HOME}/.pgbackrest_environment"
+    exec pgbackrest --stanza=poddb archive-get "${1}" "${2}"
+  pgbackrest_bootstrap.sh: |
+    #!/bin/sh
+    set -e
+
+    log() {
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - bootstrap - $1"
+    }
+
+    terminate() {
+        log "Stopping"
+        exit 1
+    }
+    # If we don't catch these signals, and we're still waiting for PostgreSQL
+    # to be ready, we will not respond at all to a regular shutdown request,
+    # therefore, we explicitly terminate if we receive these signals.
+    trap terminate TERM QUIT
+
+    while ! pg_isready -q; do
+        log "Waiting for PostgreSQL to become available"
+        sleep 3
+    done
+
+    # We'll be lazy; we wait for another while to allow the database to promote
+    # to primary if it's the only one running
+    sleep 10
+
+    # If we are the primary, we want to create/validate the backup stanza
+    if [ "$(psql -c "SELECT pg_is_in_recovery()::text" -AtXq)" = "false" ]; then
+        pgbackrest check || {
+            log "Creating pgBackrest stanza"
+            pgbackrest --stanza=poddb stanza-create --log-level-stderr=info || exit 1
+            log "Creating initial backup"
+            pgbackrest --type=full backup || exit 1
+        }
+    fi
+
+    log "Starting pgBackrest api to listen for backup requests"
+    exec python3 /scripts/pgbackrest-rest.py --stanza=poddb --loglevel=debug
+  pgbackrest_restore.sh: |
+    #!/bin/sh
+    PGBACKREST_BACKUP_ENABLED=0
+    [ ${PGBACKREST_BACKUP_ENABLED} -ne 0 ] || exit 1
+
+    . "${HOME}/.pod_environment"
+
+    PGDATA="/var/lib/postgresql/data"
+    WALDIR="/var/lib/postgresql/wal/pg_wal"
+
+    # A missing PGDATA points to Patroni removing a botched PGDATA, or manual
+    # intervention. In this scenario, we need to recreate the DATA and WALDIRs
+    # to keep pgBackRest happy
+    [ -d "${PGDATA}" ] || install -o postgres -g postgres -d -m 0700 "${PGDATA}"
+    [ -d "${WALDIR}" ] || install -o postgres -g postgres -d -m 0700 "${WALDIR}"
+
+    exec pgbackrest --force --delta --log-level-console=detail restore
+  restore_or_initdb.sh: |
+    #!/bin/sh
+
+    . "${HOME}/.pod_environment"
+
+    log() {
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - restore_or_initdb - $1"
+    }
+
+    PGDATA="/var/lib/postgresql/data"
+    WALDIR="/var/lib/postgresql/wal/pg_wal"
+    # A missing PGDATA points to Patroni removing a botched PGDATA, or manual
+    # intervention. In this scenario, we need to recreate the DATA and WALDIRs
+    # to keep pgBackRest happy
+    [ -d "${PGDATA}" ] || install -o postgres -g postgres -d -m 0700 "${PGDATA}"
+    [ -d "${WALDIR}" ] || install -o postgres -g postgres -d -m 0700 "${WALDIR}"
+
+    if [ "${BOOTSTRAP_FROM_BACKUP}" = "1" ]; then
+        log "Attempting restore from backup"
+        # we want to override the environment with the environment
+        # shellcheck disable=SC2046
+        export $(env -i envdir /etc/pgbackrest/bootstrap env) > /dev/null
+        export PGBACKREST_REPO1_PATH=
+
+        if [ -z "${PGBACKREST_REPO1_PATH}" ]; then
+            log "Unconfigured repository path"
+            cat << "__EOT__"
+
+    TimescaleDB Single Helm Chart error:
+
+    You should configure the bootstrapFromBackup in your Helm Chart section by explicitly setting
+    the repo1-path to point to the backups.
+
+    For example, if you want to do a disaster recovery, and you want to reuse
+    the backup, you could configure the path as follows:
+
+    ```yaml
+    bootstrapFromBackup:
+      enabled: true
+      repo1-path: "/tobs/release-name/"
+    ```
+
+    For more information, consult the admin guide:
+    https://github.com/timescale/helm-charts/blob/main/charts/timescaledb-single/admin-guide.md#bootstrap-from-backup
+
+
+    __EOT__
+
+            exit 1
+        fi
+
+        log "Listing available backup information"
+        pgbackrest info
+        EXITCODE=$?
+        if [ ${EXITCODE} -ne 0 ]; then
+            exit $EXITCODE
+        fi
+
+        pgbackrest --log-level-console=detail restore
+        EXITCODE=$?
+        if [ ${EXITCODE} -eq 0 ]; then
+            log "pgBackRest restore finished succesfully, starting instance in recovery"
+            # We want to ensure we do not overwrite a current backup repository with archives, therefore
+            # we block archiving from succeeding until Patroni can takeover
+            touch "${PGDATA}/recovery.signal"
+            pg_ctl -D "${PGDATA}" start -o '--archive-command=/bin/false'
+
+            while ! pg_isready -q; do
+                log "Waiting for PostgreSQL to become available"
+                sleep 3
+            done
+
+            # It is not trivial to figure out to what point we should restore, pgBackRest
+            # should be fetching WAL segments until the WAL is exhausted. We'll ask pgBackRest
+            # what the Maximum Wal is that it currently has; as soon as we see that, we can consider
+            # the restore to be done
+            while true; do
+              MAX_BACKUP_WAL="$(pgbackrest info --output=json | python3 -c "import json,sys;obj=json.load(sys.stdin); print(obj[0]['archive'][0]['max']);")"
+              log "Testing whether WAL file ${MAX_BACKUP_WAL} has been restored ..."
+              [ -f "${PGDATA}/pg_wal/${MAX_BACKUP_WAL}" ] && break
+              sleep 30;
+            done
+
+            # At this point we know the final WAL archive has been restored, we should be done.
+            log "The WAL file ${MAX_BACKUP_WAL} has been successully restored, shutting down instance"
+            pg_ctl -D "${PGDATA}" promote
+            pg_ctl -D "${PGDATA}" stop -m fast
+            log "Handing over control to Patroni ..."
+        else
+            log "Bootstrap from backup failed"
+            exit 1
+        fi
+    else
+        # Patroni attaches --scope and --datadir to the arguments, we need to strip them off as
+        # initdb has no business with these parameters
+        initdb_args=""
+        for value in "$@"
+        do
+            case $value in
+                "--scope"*)
+                    ;;
+                "--datadir"*)
+                    ;;
+                *)
+                    initdb_args="${initdb_args} $value"
+                    ;;
+            esac
+        done
+
+        log "Invoking initdb"
+        # shellcheck disable=SC2086
+        initdb --auth-local=peer --auth-host=md5 --pgdata="${PGDATA}" --waldir="${WALDIR}" ${initdb_args}
+    fi
+
+    echo "include_if_exists = '/var/run/postgresql/timescaledb.conf'" >> "${PGDATA}/postgresql.conf"
+  post_init.sh: |
+    #!/bin/sh
+    . "${HOME}/.pod_environment"
+
+    log() {
+        echo "$(date '+%Y-%m-%d %H:%M:%S') - post_init - $1"
+    }
+
+    log "Creating extension TimescaleDB in template1 and postgres databases"
+    psql -d "$URL" <<__SQL__
+      \connect template1
+      -- As we're still only initializing, we cannot have synchronous_commit enabled just yet.
+      SET synchronous_commit to 'off';
+      CREATE EXTENSION timescaledb;
+
+      \connect postgres
+      SET synchronous_commit to 'off';
+      CREATE EXTENSION timescaledb;
+    __SQL__
+
+    TABLESPACES=""
+    for tablespace in $TABLESPACES
+    do
+      log "Creating tablespace ${tablespace}"
+      tablespacedir="/var/lib/postgresql/tablespaces/${tablespace}/data"
+      psql -d "$URL" --set tablespace="${tablespace}" --set directory="${tablespacedir}" --set ON_ERROR_STOP=1 <<__SQL__
+        SET synchronous_commit to 'off';
+        CREATE TABLESPACE :"tablespace" LOCATION :'directory';
+    __SQL__
+    done
+
+    # This directory may contain user defined post init steps
+    for file in /etc/timescaledb/post_init.d/*
+    do
+      [ -d "$file" ] && continue
+      [ ! -r "$file" ] && continue
+
+      case "$file" in
+        *.sh)
+          if [ -x "$file" ]; then
+            log "Call post init script [ $file ]"
+            "$file" "$@"
+            EXITCODE=$?
+          else
+            log "Source post init script [ $file ]"
+            . "$file"
+            EXITCODE=$?
+          fi
+          ;;
+        *.sql)
+          log "Apply post init sql [ $file ]"
+          # Disable synchronous_commit since we're initializing
+          PGOPTIONS="-c synchronous_commit=local" psql -d "$URL" -f "$file"
+          EXITCODE=$?
+          ;;
+        *.sql.gz)
+          log "Decompress and apply post init sql [ $file ]"
+          gunzip -c "$file" | PGOPTIONS="-c synchronous_commit=local" psql -d "$URL"
+          EXITCODE=$?
+          ;;
+        *)
+          log "Ignore unknown post init file type [ $file ]"
+          EXITCODE=0
+          ;;
+      esac
+        EXITCODE=$?
+        if [ "$EXITCODE" != "0" ]
+        then
+            log "ERROR: post init script $file exited with exitcode $EXITCODE"
+            exit $EXITCODE
+        fi
+    done
+
+    # We exit 0 this script, otherwise the database initialization fails.
+    exit 0
+  patroni_callback.sh: |
+    #!/bin/sh
+    set -e
+
+    . "${HOME}/.pod_environment"
+
+    for suffix in "$1" all
+    do
+      CALLBACK="/etc/timescaledb/callbacks/${suffix}"
+      if [ -f "${CALLBACK}" ]
+      then
+        "${CALLBACK}" "$@"
+      fi
+    done
+
+  lifecycle_preStop.psql: |
+    \pset pager off
+    \set ON_ERROR_STOP true
+    \set hostname `hostname`
+    \set dsn_fmt 'user=postgres host=%s application_name=lifecycle:preStop@%s connect_timeout=5 options=''-c log_min_duration_statement=0'''
+
+    SELECT
+        pg_is_in_recovery() AS in_recovery,
+        format(:'dsn_fmt', patroni_scope,                       :'hostname') AS primary_dsn,
+        format(:'dsn_fmt', '/var/run/postgresql', :'hostname') AS local_dsn
+    FROM
+        current_setting('cluster_name') AS cs(patroni_scope)
+    \gset
+
+    \timing on
+    \set ECHO queries
+
+    -- There should be a CHECKPOINT at the primary
+    \if :in_recovery
+        \connect :"primary_dsn"
+        CHECKPOINT;
+    \endif
+
+    -- There should also be a CHECKPOINT locally,
+    -- for the primary, this may mean we do a double checkpoint,
+    -- but the second one would be cheap anyway, so we leave that as is
+    \connect :"local_dsn"
+    SELECT 'Issuing checkpoint';
+    CHECKPOINT;
+
+    \if :in_recovery
+        SELECT 'We are a replica: Successfully invoked checkpoints at the primary and locally.';
+    \else
+        SELECT 'We are a primary: Successfully invoked checkpoints, now issuing a switchover.';
+        \! curl -s http://localhost:8008/switchover -XPOST -d '{"leader": "$(hostname)"}'
+    \endif
+...
+---
+# Source: tobs/templates/connection-secret-job.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: release-name-connection-initializer
+  namespace: tobs
+  labels:
+    app: release-name-tobs
+    chart: tobs-15.1.1
+    release: release-name
+    heritage: Helm
+data:
+  password-initializer.sh: |
+    #!/bin/bash
+    while ! kubectl get secret release-name-credentials --namespace tobs; do
+      echo "Waiting for release-name-credentials secret."
+      sleep 1
+    done
+    PASS=$(kubectl get secret --namespace tobs release-name-credentials -o json | jq -r '.data["PATRONI_SUPERUSER_PASSWORD"]')
+    kubectl get secret --namespace tobs tobs-promscale-connection -o json | jq --arg PASS "$PASS" '.data["PROMSCALE_DB_PASSWORD"]=$PASS' | kubectl apply -f -
+---
+# Source: tobs/templates/timescaledb-toolkit.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custom-init-scripts
+  namespace: tobs
+  labels:
+   app: release-name-tobs
+   chart: tobs-15.1.1
+   release: release-name
+data:
+  toolkit.sql: |
+    create extension if not exists timescaledb_toolkit
+---
+# Source: tobs/charts/opentelemetry-operator/templates/clusterrole.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  labels:
+    app.kubernetes.io/name: opentelemetry-operator
+  name: opentelemetry-operator-manager-role
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+    verbs:
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - serviceaccounts
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - apps
+    resources:
+      - daemonsets
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - apps
+    resources:
+      - deployments
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - apps
+    resources:
+      - replicasets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - apps
+    resources:
+      - statefulsets
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - autoscaling
+    resources:
+      - horizontalpodautoscalers
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - create
+      - get
+      - list
+      - update
+  - apiGroups:
+      - opentelemetry.io
+    resources:
+      - instrumentations
+    verbs:
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - opentelemetry.io
+    resources:
+      - opentelemetrycollectors
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - opentelemetry.io
+    resources:
+      - opentelemetrycollectors/finalizers
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - opentelemetry.io
+    resources:
+      - opentelemetrycollectors/status
+    verbs:
+      - get
+      - patch
+      - update
+---
+# Source: tobs/charts/opentelemetry-operator/templates/clusterrole.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: opentelemetry-operator
+  name: opentelemetry-operator-metrics-reader
+rules:
+  - nonResourceURLs:
+      - /metrics
+    verbs:
+      - get
+---
+# Source: tobs/charts/opentelemetry-operator/templates/clusterrole.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: opentelemetry-operator
+  name: opentelemetry-operator-proxy-role
+rules:
+  - apiGroups:
+      - authentication.k8s.io
+    resources:
+      - tokenreviews
+    verbs:
+      - create
+  - apiGroups:
+      - authorization.k8s.io
+    resources:
+      - subjectaccessreviews
+    verbs:
+      - create
+---
+# Source: tobs/charts/opentelemetry-operator/templates/clusterrolebinding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/name: opentelemetry-operator
+  name: opentelemetry-operator-manager-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: opentelemetry-operator-manager-role
+subjects:
+  - kind: ServiceAccount
+    name: opentelemetry-operator-controller-manager
+    namespace: tobs
+---
+# Source: tobs/charts/opentelemetry-operator/templates/clusterrolebinding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/name: opentelemetry-operator
+  name: opentelemetry-operator-proxy-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: opentelemetry-operator-proxy-role
+subjects:
+  - kind: ServiceAccount
+    name: opentelemetry-operator-controller-manager
+    namespace: tobs
+---
+# Source: tobs/charts/opentelemetry-operator/templates/role.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/name: opentelemetry-operator
+  name: opentelemetry-operator-leader-election-role
+  namespace: tobs
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps/status
+    verbs:
+      - get
+      - update
+      - patch
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+---
+# Source: tobs/charts/timescaledb-single/templates/role-timescaledb.yaml
+# This file and its contents are licensed under the Apache License 2.0.
+# Please see the included NOTICE for copyright information and LICENSE for a copy of the license.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: release-name-timescaledb
+  namespace: tobs
+  labels:
+    app: release-name-timescaledb
+    chart: timescaledb-single-0.17.0
+    release: release-name
+    heritage: Helm
+    cluster-name: release-name
+    app.kubernetes.io/name: "release-name-timescaledb"
+    app.kubernetes.io/version: 0.17.0
+    app.kubernetes.io/component: rbac
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+  # delete is required only for 'patronictl remove'
+  - delete
+- apiGroups: [""]
+  resources:
+  - endpoints
+  - endpoints/restricted
+  verbs:
+  - create
+  - get
+  - patch
+  - update
+  # the following three privileges are necessary only when using endpoints
+  - list
+  - watch
+  # delete is required only for for 'patronictl remove'
+  - delete
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+---
+# Source: tobs/templates/connection-secret-job.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: release-name-promscale-initializer-role
+  namespace: tobs
+  labels:
+    app: release-name-tobs
+    chart: tobs-15.1.1
+    release: release-name
+    heritage: Helm
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "patch"]
+---
+# Source: tobs/charts/opentelemetry-operator/templates/rolebinding.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  labels:
+    app.kubernetes.io/name: opentelemetry-operator
+  name: opentelemetry-operator-leader-election-rolebinding
+  namespace: tobs
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: opentelemetry-operator-leader-election-role
+subjects:
+  - kind: ServiceAccount
+    name: opentelemetry-operator-controller-manager
+    namespace: tobs
+---
+# Source: tobs/charts/timescaledb-single/templates/rolebinding-timescaledb.yaml
+# This file and its contents are licensed under the Apache License 2.0.
+# Please see the included NOTICE for copyright information and LICENSE for a copy of the license.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: release-name-timescaledb
+  namespace: tobs
+  labels:
+    app: release-name-timescaledb
+    chart: timescaledb-single-0.17.0
+    release: release-name
+    heritage: Helm
+    cluster-name: release-name
+    app.kubernetes.io/name: "release-name-timescaledb"
+    app.kubernetes.io/version: 0.17.0
+    app.kubernetes.io/component: rbac
+subjects:
+  - kind: ServiceAccount
+    name: release-name-timescaledb
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: release-name-timescaledb
+---
+# Source: tobs/templates/connection-secret-job.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: release-name-promscale-initializer-rolebinding
+  namespace: tobs
+  labels:
+    app: release-name-tobs
+    chart: tobs-15.1.1
+    release: release-name
+    heritage: Helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: release-name-promscale-initializer-role
+subjects:
+- namespace: tobs
+  kind: ServiceAccount
+  name: release-name-promscale-initializer-sa
+---
+# Source: tobs/charts/opentelemetry-operator/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    helm.sh/chart: opentelemetry-operator-0.13.0
+    app.kubernetes.io/name: opentelemetry-operator
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/version: "0.60.0"
+    app.kubernetes.io/managed-by: Helm
+    control-plane: controller-manager
+  name: opentelemetry-operator-controller-manager-metrics-service
+  namespace: tobs
+spec:
+  ports:
+    
+    - name: https
+      port: 8443
+      protocol: TCP
+      targetPort: https
+    - name: metrics
+      port: 8080
+      protocol: TCP
+      targetPort: metrics
+  selector:
+    app.kubernetes.io/name: opentelemetry-operator
+    control-plane: controller-manager
+---
+# Source: tobs/charts/opentelemetry-operator/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/name: opentelemetry-operator
+  name: opentelemetry-operator-webhook-service
+  namespace: tobs
+spec:
+  ports:
+    - port: 443
+      protocol: TCP
+      targetPort: webhook-server
+  selector:
+    app.kubernetes.io/name: opentelemetry-operator
+    control-plane: controller-manager
+---
+# Source: tobs/charts/promscale/templates/svc-promscale.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: release-name-promscale
+  namespace: tobs
+  labels:
+    app: release-name-promscale
+    chart: promscale-14.2.0
+    release: release-name
+    heritage: Helm
+    app.kubernetes.io/name: "release-name-promscale"
+    app.kubernetes.io/version: 0.14.0
+    app.kubernetes.io/component: "connector"
+spec:
+  selector:
+    app: release-name-promscale
+  type: ClusterIP
+  ports:
+  
+  - name: metrics-port
+    port: 9201
+    targetPort: metrics-port
+    protocol: TCP
+  
+  - name: otel-port
+    port: 9202
+    targetPort: otel-port
+    protocol: TCP
+---
+# Source: tobs/charts/timescaledb-single/templates/svc-timescaledb-config.yaml
+# This file and its contents are licensed under the Apache License 2.0.
+# Please see the included NOTICE for copyright information and LICENSE for a copy of the license.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: release-name-config
+  namespace: tobs
+  labels:
+    component: patroni
+    app: release-name-timescaledb
+    chart: timescaledb-single-0.17.0
+    release: release-name
+    heritage: Helm
+    cluster-name: release-name
+    app.kubernetes.io/name: "release-name-timescaledb"
+    app.kubernetes.io/version: 0.17.0
+    app.kubernetes.io/component: patroni
+spec:
+  selector:
+    app: release-name-timescaledb
+    cluster-name: release-name
+  type: ClusterIP
+  clusterIP: None
+  ports:
+  - name: patroni
+    port: 8008
+    protocol: TCP
+---
+# Source: tobs/charts/timescaledb-single/templates/svc-timescaledb-replica.yaml
+# This file and its contents are licensed under the Apache License 2.0.
+# Please see the included NOTICE for copyright information and LICENSE for a copy of the license.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: release-name-replica
+  namespace: tobs
+  labels:
+    component: postgres
+    role: replica
+    app: release-name-timescaledb
+    chart: timescaledb-single-0.17.0
+    release: release-name
+    heritage: Helm
+    cluster-name: release-name
+    app.kubernetes.io/name: "release-name-timescaledb"
+    app.kubernetes.io/version: 0.17.0
+    app.kubernetes.io/component: postgres
+spec:
+  selector:
+    app: release-name-timescaledb
+    cluster-name: release-name
+    role: replica
+  type: ClusterIP
+  ports:
+  - name: postgresql
+    # This always defaults to 5432, even if `!replicaLoadBalancer.enabled`.
+    port: 5432
+    targetPort: postgresql
+    protocol: TCP
+---
+# Source: tobs/charts/timescaledb-single/templates/svc-timescaledb.yaml
+# This file and its contents are licensed under the Apache License 2.0.
+# Please see the included NOTICE for copyright information and LICENSE for a copy of the license.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: release-name
+  namespace: tobs
+  labels:
+    role: master
+    app: release-name-timescaledb
+    chart: timescaledb-single-0.17.0
+    release: release-name
+    heritage: Helm
+    cluster-name: release-name
+    app.kubernetes.io/name: "release-name-timescaledb"
+    app.kubernetes.io/version: 0.17.0
+    app.kubernetes.io/component: timescaledb
+spec:
+  type: ClusterIP
+  ports:
+  - name: postgresql
+    # This always defaults to 5432, even if `!loadBalancer.enabled`.
+    port: 5432
+    targetPort: postgresql
+    protocol: TCP
+---
+# Source: tobs/charts/opentelemetry-operator/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/name: opentelemetry-operator
+    control-plane: controller-manager
+  name: opentelemetry-operator-controller-manager
+  namespace: tobs
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: opentelemetry-operator
+      control-plane: controller-manager
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+      labels:
+        app.kubernetes.io/name: opentelemetry-operator
+        control-plane: controller-manager
+    spec:
+      hostNetwork: false
+      containers:
+        - args:
+            - --metrics-addr=0.0.0.0:8080
+            - --enable-leader-election
+            - --health-probe-addr=:8081
+            - --webhook-port=9443
+            - --collector-image=otel/opentelemetry-collector:0.60.0
+          command:
+            - /manager
+          image: "ghcr.io/open-telemetry/opentelemetry-operator/opentelemetry-operator:v0.60.0"
+          name: manager
+          ports:
+            - containerPort: 8080
+              name: metrics
+              protocol: TCP
+            - containerPort: 9443
+              name: webhook-server
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources: 
+            limits:
+              cpu: 100m
+              memory: 500Mi
+            requests:
+              cpu: 50m
+              memory: 300Mi
+          volumeMounts:
+            - mountPath: /tmp/k8s-webhook-server/serving-certs
+              name: cert
+              readOnly: true
+        
+        - args:
+            - --secure-listen-address=0.0.0.0:8443
+            - --upstream=http://127.0.0.1:8080/
+            - --logtostderr=true
+            - --v=0
+          image: "gcr.io/kubebuilder/kube-rbac-proxy:v0.11.0"
+          name: kube-rbac-proxy
+          ports:
+            - containerPort: 8443
+              name: https
+              protocol: TCP
+          resources: 
+            limits:
+              cpu: 500m
+              memory: 128Mi
+            requests:
+              cpu: 5m
+              memory: 64Mi
+      serviceAccountName: opentelemetry-operator-controller-manager
+      terminationGracePeriodSeconds: 10
+      volumes:
+        - name: cert
+          secret:
+            defaultMode: 420
+            secretName: opentelemetry-operator-controller-manager-service-cert
+      securityContext:
+        fsGroup: 65534
+        runAsGroup: 65534
+        runAsNonRoot: true
+        runAsUser: 65534
+---
+# Source: tobs/charts/promscale/templates/deployment-promscale.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: release-name-promscale
+  namespace: tobs
+  labels:
+
+    app: release-name-promscale
+    chart: promscale-14.2.0
+    release: release-name
+    heritage: Helm
+    app.kubernetes.io/name: "release-name-promscale"
+    app.kubernetes.io/version: 0.14.0
+    app.kubernetes.io/component: "connector"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: release-name-promscale
+      release: release-name
+  template:
+    metadata:
+      labels:
+        app: release-name-promscale
+        chart: promscale-14.2.0
+        release: release-name
+        heritage: Helm
+        app.kubernetes.io/name: "release-name-promscale"
+        app.kubernetes.io/version: 0.14.0
+        app.kubernetes.io/component: "connector"
+      annotations:
+        checksum/connection: ff05ff54cbc0eadd9ce97781ed753f30c19ece1aa39b35d2eb5a70ad656daf69
+        checksum/config: a1171a41877cc559fe699480d7c9bc731055fde6ccbe0b47e5c9a279cfe38962
+        prometheus.io/port: '9201'
+        prometheus.io/path: '/metrics'
+        prometheus.io/scrape: "false"
+    spec:
+      containers:
+        - image: timescale/promscale:0.14.0
+          imagePullPolicy: IfNotPresent
+          name: promscale
+          args:
+          - "-config=/etc/promscale/config.yaml"
+          
+          - --metrics.high-availability=true
+          - --tracing.async-acks
+          env:
+            - name: TOBS_TELEMETRY_INSTALLED_BY
+              value: "promscale"
+            - name: "TOBS_TELEMETRY_VERSION"
+              value: "14.2.0"
+            - name: TOBS_TELEMETRY_INSTALLED_BY
+              value: "helm"
+            - name: TOBS_TELEMETRY_VERSION
+              value: "14.2.0"
+            - name: TOBS_TELEMETRY_TRACING_ENABLED
+              value: "true"
+            - name: TOBS_TELEMETRY_TIMESCALEDB_ENABLED
+              value: "true"
+          envFrom:
+          - secretRef:
+              name: tobs-promscale-connection
+          resources:
+            requests:
+              cpu: 5000m
+              memory: 5Gi
+          ports:
+            - containerPort: 9201
+              name: metrics-port
+            - containerPort: 9202
+              name: otel-port
+          readinessProbe:
+            failureThreshold: 3
+            httpGet:
+              path: /healthz
+              port: metrics-port
+              scheme: HTTP
+            periodSeconds: 15
+            timeoutSeconds: 15
+          volumeMounts:
+            - name: configs
+              mountPath: /etc/promscale/
+      volumes:
+        - name: configs
+          configMap:
+            name: release-name-promscale
+      serviceAccountName: release-name-promscale
+      automountServiceAccountToken: false
+---
+# Source: tobs/charts/timescaledb-single/templates/statefulset-timescaledb.yaml
+# This file and its contents are licensed under the Apache License 2.0.
+# Please see the included NOTICE for copyright information and LICENSE for a copy of the license.
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: release-name-timescaledb
+  namespace: tobs
+  labels:
+    app: release-name-timescaledb
+    chart: timescaledb-single-0.17.0
+    release: release-name
+    heritage: Helm
+    cluster-name: release-name
+    app.kubernetes.io/name: "release-name-timescaledb"
+    app.kubernetes.io/version: 0.17.0
+    app.kubernetes.io/component: timescaledb
+spec:
+  serviceName: release-name-timescaledb
+  replicas: 1
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app: release-name-timescaledb
+      release: release-name
+  template:
+    metadata:
+      name: release-name-timescaledb
+      labels:
+        app: release-name-timescaledb
+        chart: timescaledb-single-0.17.0
+        release: release-name
+        heritage: Helm
+        cluster-name: release-name
+        app.kubernetes.io/name: "release-name-timescaledb"
+        app.kubernetes.io/version: 0.17.0
+        app.kubernetes.io/component: timescaledb
+    spec:
+      serviceAccountName: release-name-timescaledb
+      securityContext:
+        # The postgres user inside the TimescaleDB image has uid=1000.
+        # This configuration ensures the permissions of the mounts are suitable
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+      initContainers:
+      - name: tstune
+        securityContext:
+          allowPrivilegeEscalation: false
+        image: "timescale/timescaledb-ha:pg14.5-ts2.8.0-p1"
+        env:
+        - name: TSTUNE_FILE
+          value: /var/run/postgresql/timescaledb.conf
+        - name: RESOURCES_WAL_VOLUME
+          value: 200Gi
+        - name: RESOURCES_DATA_VOLUME
+          value: 1500Gi
+        - name: INCLUDE_DIRECTIVE
+          value: include_if_exists = '/var/run/postgresql/timescaledb.conf'
+        - name: CPUS
+          valueFrom:
+            resourceFieldRef:
+              containerName: timescaledb
+              resource: requests.cpu
+              divisor: "1"
+        - name: MEMORY
+          valueFrom:
+            resourceFieldRef:
+              containerName: timescaledb
+              resource: requests.memory
+              divisor: 1Mi
+        - name: RESOURCES_CPU_LIMIT
+          valueFrom:
+            resourceFieldRef:
+              containerName: timescaledb
+              resource: limits.cpu
+              divisor: "1"
+        - name: RESOURCES_MEMORY_LIMIT
+          valueFrom:
+            resourceFieldRef:
+              containerName: timescaledb
+              resource: limits.memory
+              divisor: 1Mi
+        command:
+          - sh
+          - "-c"
+          - |
+              set -e
+              [ $CPUS -eq 0 ]   && CPUS="${RESOURCES_CPU_LIMIT}"
+              [ $MEMORY -eq 0 ] && MEMORY="${RESOURCES_MEMORY_LIMIT}"
+
+              if [ -f "${PGDATA}/postgresql.base.conf" ] && ! grep "${INCLUDE_DIRECTIVE}" postgresql.base.conf -qxF; then
+                echo "${INCLUDE_DIRECTIVE}" >> "${PGDATA}/postgresql.base.conf"
+              fi
+
+              touch "${TSTUNE_FILE}"
+              timescaledb-tune -quiet -conf-path "${TSTUNE_FILE}" -cpus "${CPUS}" -memory "${MEMORY}MB" \
+                 -yes
+
+              # If there is a dedicated WAL Volume, we want to set max_wal_size to 60% of that volume
+              # If there isn't a dedicated WAL Volume, we set it to 20% of the data volume
+              if [ "${RESOURCES_WAL_VOLUME}" = "0" ]; then
+                WALMAX="${RESOURCES_DATA_VOLUME}"
+                WALPERCENT=20
+              else
+                WALMAX="${RESOURCES_WAL_VOLUME}"
+                WALPERCENT=60
+              fi
+
+              WALMAX=$(numfmt --from=auto ${WALMAX})
+
+              # Wal segments are 16MB in size, in this way we get a "nice" number of the nearest
+              # 16MB
+              WALMAX=$(( $WALMAX / 100 * $WALPERCENT / 16777216 * 16 ))
+              WALMIN=$(( $WALMAX / 2 ))
+
+              echo "max_wal_size=${WALMAX}MB" >> "${TSTUNE_FILE}"
+              echo "min_wal_size=${WALMIN}MB" >> "${TSTUNE_FILE}"
+        volumeMounts:
+        - name: socket-directory
+          mountPath: /var/run/postgresql
+        resources:
+          requests:
+            cpu: 10000m
+            memory: 10Gi
+      # Issuing the final checkpoints on a busy database may take considerable time.
+      # Unfinished checkpoints will require more time during startup, so the tradeoff
+      # here is time spent in shutdown/time spent in startup.
+      # We choose shutdown here, especially as during the largest part of the shutdown
+      # we can still serve clients.
+      terminationGracePeriodSeconds: 600
+      containers:
+      - name: timescaledb
+        securityContext:
+          allowPrivilegeEscalation: false
+        image: "timescale/timescaledb-ha:pg14.5-ts2.8.0-p1"
+        imagePullPolicy: IfNotPresent
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - psql
+              - -X
+              - --file
+              - "/etc/timescaledb/scripts/lifecycle_preStop.psql"
+        # When reusing an already existing volume it sometimes happens that the permissions
+        # of the PGDATA and/or wal directory are incorrect. To guard against this, we always correctly
+        # set the permissons of these directories before we hand over to Patroni.
+        # We also create all the tablespaces that are defined, to ensure a smooth restore/recovery on a
+        # pristine set of Volumes.
+        # As PostgreSQL requires to have full control over the permissions of the tablespace directories,
+        # we create a subdirectory "data" in every tablespace mountpoint. The full path of every tablespace
+        # therefore always ends on "/data".
+        # By creating a .pgpass file in the $HOME directory, we expose the superuser password
+        # to processes that may not have it in their environment (like the preStop lifecycle hook).
+        # To ensure Patroni will not mingle with this file, we give Patroni its own pgpass file.
+        # As these files are in the $HOME directory, they are only available to *this* container,
+        # and they are ephemeral.
+        command:
+          - /bin/bash
+          - "-c"
+          - |
+            
+            install -o postgres -g postgres -d -m 0700 "/var/lib/postgresql/data" "/var/lib/postgresql/wal/pg_wal" || exit 1
+            TABLESPACES=""
+            for tablespace in ; do
+              install -o postgres -g postgres -d -m 0700 "/var/lib/postgresql/tablespaces/${tablespace}/data"
+            done
+
+            # Environment variables can be read by regular users of PostgreSQL. Especially in a Kubernetes
+            # context it is likely that some secrets are part of those variables.
+            # To ensure we expose as little as possible to the underlying PostgreSQL instance, we have a list
+            # of allowed environment variable patterns to retain.
+            #
+            # We need the KUBERNETES_ environment variables for the native Kubernetes support of Patroni to work.
+            #
+            # NB: Patroni will remove all PATRONI_.* environment variables before starting PostgreSQL
+
+            # We store the current environment, as initscripts, callbacks, archive_commands etc. may require
+            # to have the environment available to them
+            set -o posix
+            export -p > "${HOME}/.pod_environment"
+            export -p | grep PGBACKREST > "${HOME}/.pgbackrest_environment"
+
+            for UNKNOWNVAR in $(env | awk -F '=' '!/^(PATRONI_.*|HOME|PGDATA|PGHOST|LC_.*|LANG|PATH|KUBERNETES_SERVICE_.*|AWS_ROLE_ARN|AWS_WEB_IDENTITY_TOKEN_FILE)=/ {print $1}')
+            do
+                unset "${UNKNOWNVAR}"
+            done
+
+            touch /var/run/postgresql/timescaledb.conf
+            touch /var/run/postgresql/wal_status
+
+            echo "*:*:*:postgres:${PATRONI_SUPERUSER_PASSWORD}" >> ${HOME}/.pgpass
+            chmod 0600 ${HOME}/.pgpass
+
+            export PATRONI_POSTGRESQL_PGPASS="${HOME}/.pgpass.patroni"
+
+            exec patroni /etc/timescaledb/patroni.yaml
+        env:
+        # We use mixed case environment variables for Patroni User management,
+        # as the variable themselves are documented to be PATRONI_<username>_OPTIONS.
+        # Where possible, we want to have lowercase usernames in PostgreSQL as more complex postgres usernames
+        # requiring quoting to be done in certain contexts, which many tools do not do correctly, or even at all.
+        # https://patroni.readthedocs.io/en/latest/ENVIRONMENT.html#bootstrap-configuration
+        - name: PATRONI_admin_OPTIONS
+          value: createrole,createdb
+        - name: PATRONI_REPLICATION_USERNAME
+          value: standby
+        # To specify the PostgreSQL and Rest API connect addresses we need
+        # the PATRONI_KUBERNETES_POD_IP to be available as a bash variable, so we can compose an
+        # IP:PORT address later on
+        - name: PATRONI_KUBERNETES_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: PATRONI_POSTGRESQL_CONNECT_ADDRESS
+          value: "$(PATRONI_KUBERNETES_POD_IP):5432"
+        - name: PATRONI_RESTAPI_CONNECT_ADDRESS
+          value: "$(PATRONI_KUBERNETES_POD_IP):8008"
+        - name: PATRONI_KUBERNETES_PORTS
+          value: '[{"name": "postgresql", "port": 5432}]'
+        - name: PATRONI_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: PATRONI_POSTGRESQL_DATA_DIR
+          value: "/var/lib/postgresql/data"
+        - name: PATRONI_KUBERNETES_NAMESPACE
+          value: tobs
+        - name: PATRONI_KUBERNETES_LABELS
+          value: "{app: release-name-timescaledb, cluster-name: release-name, release: release-name}"
+        - name: PATRONI_SCOPE
+          value: release-name
+        - name: PGBACKREST_CONFIG
+          value: /etc/pgbackrest/pgbackrest.conf
+        # PGDATA and PGHOST are not required to let Patroni/PostgreSQL run correctly,
+        # but for interactive sessions, callbacks and PostgreSQL tools they should be correct.
+        - name: PGDATA
+          value: "$(PATRONI_POSTGRESQL_DATA_DIR)"
+        - name: PGHOST
+          value: "/var/run/postgresql"
+        - name: BOOTSTRAP_FROM_BACKUP
+          value: "0"
+        - name: TSTUNE_PROFILE
+          value: promscale
+          # pgBackRest is also called using the archive_command if the backup is enabled.
+          # this script will also need access to the environment variables specified for
+          # the backup. This can be removed once we do not directly invoke pgBackRest
+          # from inside the TimescaleDB container anymore
+        envFrom:
+        - secretRef:
+            name: "release-name-credentials"
+            optional: false
+        - secretRef:
+            name: "release-name-pgbackrest"
+            optional: true
+        ports:
+        - containerPort: 8008
+          name: patroni
+        - containerPort: 5432
+          name: postgresql
+        readinessProbe:
+          exec:
+            command:
+              - pg_isready
+              - -h
+              - /var/run/postgresql
+          initialDelaySeconds: 5
+          periodSeconds: 30
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 6
+        volumeMounts:
+        - name: storage-volume
+          mountPath: "/var/lib/postgresql"
+          subPath: ""
+        - name: wal-volume
+          mountPath: "/var/lib/postgresql/wal"
+          subPath: ""
+        - mountPath: /etc/timescaledb/patroni.yaml
+          subPath: patroni.yaml
+          name: patroni-config
+          readOnly: true
+        - mountPath: /etc/timescaledb/scripts
+          name: timescaledb-scripts
+          readOnly: true
+        - mountPath: /etc/timescaledb/post_init.d
+          name: post-init
+          readOnly: true
+        - mountPath: /etc/certificate
+          name: certificate
+          readOnly: true
+        - name: socket-directory
+          mountPath: /var/run/postgresql
+        
+        - mountPath: /etc/pgbackrest
+          name: pgbackrest
+          readOnly: true
+        - mountPath: /etc/pgbackrest/bootstrap
+          name: pgbackrest-bootstrap
+          readOnly: true
+        resources:
+          requests:
+            cpu: 10000m
+            memory: 10Gi
+      - name: postgres-exporter
+        image: "quay.io/prometheuscommunity/postgres-exporter:v0.11.1"
+        imagePullPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+        ports:
+        - containerPort: 9187
+          name: pg-exporter
+        volumeMounts:
+        - name: socket-directory
+          mountPath: /var/run/postgresql
+          readOnly: true
+        env:
+        - name: DATA_SOURCE_NAME
+          value: "host=/var/run/postgresql user=postgres application_name=postgres_exporter"
+        - name: PG_EXPORTER_CONSTANT_LABELS
+          value: release=release-name,namespace=tobs
+
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              topologyKey: "kubernetes.io/hostname"
+              labelSelector:
+                matchLabels:
+                  app: release-name-timescaledb
+                  release: "release-name"
+                  cluster-name: release-name
+          - weight: 50
+            podAffinityTerm:
+              topologyKey: failure-domain.beta.kubernetes.io/zone
+              labelSelector:
+                matchLabels:
+                  app: release-name-timescaledb
+                  release: "release-name"
+                  cluster-name: release-name
+        
+      volumes:
+      - name: socket-directory
+        emptyDir: {}
+      - name: patroni-config
+        configMap:
+          name: release-name-timescaledb-patroni
+      - name: timescaledb-scripts
+        configMap:
+          name: release-name-timescaledb-scripts
+          defaultMode: 488 # 0750 permissions
+      
+      - name: post-init
+        projected:
+          defaultMode: 0750
+          sources:
+            - configMap:
+                name: custom-init-scripts
+                optional: true
+            - secret:
+                name: custom-secret-scripts
+                optional: true
+      - name: pgbouncer
+        configMap:
+          name: release-name-timescaledb-pgbouncer
+          defaultMode: 416 # 0640 permissions
+          optional: true
+      - name: pgbackrest
+        configMap:
+          name: release-name-timescaledb-pgbackrest
+          defaultMode: 416 # 0640 permissions
+          optional: true
+      - name: certificate
+        secret:
+          secretName: "release-name-certificate"
+          defaultMode: 416 # 0640 permissions
+      - name: pgbackrest-bootstrap
+        secret:
+          secretName: pgbackrest-bootstrap
+          optional: True
+  volumeClaimTemplates:
+    - metadata:
+        name: storage-volume
+        annotations:
+        labels:
+          app: release-name-timescaledb
+          release: release-name
+          heritage: Helm
+          cluster-name: release-name
+          purpose: data-directory
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: "1500Gi"
+    - metadata:
+        name: wal-volume
+        annotations:
+        labels:
+          app: release-name-timescaledb
+          release: release-name
+          heritage: Helm
+          cluster-name: release-name
+          purpose: wal-directory
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: "200Gi"
+---
+# Source: tobs/templates/connection-secret-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: release-name-connection-secret
+  namespace: tobs
+  labels:
+    app: release-name-tobs
+    chart: tobs-15.1.1
+    release: release-name
+    heritage: Helm
+spec:
+  template:
+    spec:
+      containers:
+      - name: copier
+        image: bitnami/kubectl:latest
+        command: [ '/scripts/password-initializer.sh' ]
+        volumeMounts:
+        - name: promscale-initializer
+          mountPath: /scripts
+      serviceAccountName: release-name-promscale-initializer-sa
+      restartPolicy: OnFailure
+      volumes:
+      - name: promscale-initializer
+        configMap:
+          name: release-name-connection-initializer
+          defaultMode: 0755
+---
+# Source: tobs/charts/timescaledb-single/templates/configmap-pgbackrest.yaml
+# This file and its contents are licensed under the Apache License 2.0.
+# Please see the included NOTICE for copyright information and LICENSE for a copy of the license.
+---
+# Source: tobs/charts/timescaledb-single/templates/configmap-pgbouncer.yaml
+# This file and its contents are licensed under the Apache License 2.0.
+# Please see the included NOTICE for copyright information and LICENSE for a copy of the license.
+---
+# Source: tobs/charts/timescaledb-single/templates/pgbackrest.yaml
+# This file and its contents are licensed under the Apache License 2.0.
+# Please see the included NOTICE for copyright information and LICENSE for a copy of the license.
+---
+# Source: tobs/charts/opentelemetry-operator/templates/certmanager.yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  labels:
+    app.kubernetes.io/name: opentelemetry-operator
+  name: opentelemetry-operator-serving-cert
+  namespace: tobs
+spec:
+  dnsNames:
+    - opentelemetry-operator-webhook-service.tobs.svc
+    - opentelemetry-operator-webhook-service.tobs.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: opentelemetry-operator-selfsigned-issuer
+  secretName: opentelemetry-operator-controller-manager-service-cert
+  subject:
+    organizationalUnits:
+      - opentelemetry-operator
+---
+# Source: tobs/charts/opentelemetry-operator/templates/certmanager.yaml
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  labels:
+    app.kubernetes.io/name: opentelemetry-operator
+  name: opentelemetry-operator-selfsigned-issuer
+  namespace: tobs
+spec:
+  selfSigned: {}
+---
+# Source: tobs/charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook-with-cert-manager.yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: tobs/opentelemetry-operator-serving-cert
+  labels:
+    app.kubernetes.io/name: opentelemetry-operator
+  name: opentelemetry-operator-mutating-webhook-configuration
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: opentelemetry-operator-webhook-service
+        namespace: tobs
+        path: /mutate-opentelemetry-io-v1alpha1-instrumentation
+    failurePolicy: Fail
+    name: minstrumentation.kb.io
+    rules:
+    - apiGroups:
+        - opentelemetry.io
+      apiVersions:
+        - v1alpha1
+      operations:
+        - CREATE
+        - UPDATE
+      resources:
+        - instrumentations
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: opentelemetry-operator-webhook-service
+        namespace: tobs
+        path: /mutate-opentelemetry-io-v1alpha1-opentelemetrycollector
+    failurePolicy: Fail
+    name: mopentelemetrycollector.kb.io
+    rules:
+      - apiGroups:
+          - opentelemetry.io
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - opentelemetrycollectors
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: opentelemetry-operator-webhook-service
+        namespace: tobs
+        path: /mutate-v1-pod
+    failurePolicy: Ignore
+    name: mpod.kb.io
+    rules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - pods
+    sideEffects: None
+---
+# Source: tobs/charts/timescaledb-single/templates/podmonitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: release-name-timescaledb
+  labels:
+    app: release-name-timescaledb
+    chart: timescaledb-single-0.17.0
+    release: release-name
+    heritage: Helm
+    cluster-name: release-name
+    app.kubernetes.io/name: "release-name-timescaledb"
+    app.kubernetes.io/version: 0.17.0
+spec:
+  podMetricsEndpoints:
+  - interval: 10s
+    honorLabels: true
+    port: pg-exporter
+    path: /metrics
+  jobLabel: "release-name"
+  selector:
+    matchLabels:
+      app: release-name-timescaledb
+      release: "release-name"
+  namespaceSelector:
+    matchNames:
+      - tobs
+---
+# Source: tobs/charts/opentelemetry-operator/templates/prometheusrule.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: release-name-opentelemetry-operator
+  namespace: tobs
+  labels:
+    helm.sh/chart: opentelemetry-operator-0.13.0
+    app.kubernetes.io/name: opentelemetry-operator
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/version: "0.60.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  groups:
+---
+# Source: tobs/charts/promscale/templates/prometheus-rule.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: release-name-promscale-rules
+  namespace: tobs
+  labels:
+    app: release-name-promscale
+    chart: promscale-14.2.0
+    release: release-name
+    heritage: Helm
+    app.kubernetes.io/name: "release-name-promscale"
+    app.kubernetes.io/version: 0.14.0
+    app.kubernetes.io/component: "connector"
+spec:
+
+  # Note: Alert thresholds are experimental. Feel free to change them or suggest back at
+  # Promscale channel in TimescaleDB slack.
+  groups:
+  - name: promscale-general
+    rules:
+    - alert: PromscaleDown
+      expr: absent(up{job=~".*promscale.*"})
+      labels:
+        severity: critical
+      annotations:
+        summary: Promscale is down.
+        description: "{{ $labels.instance }} of job {{ $labels.job }} is down."
+        runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleDown.md
+  - name: promscale-ingest
+    rules:
+    - alert: PromscaleIngestHighErrorRate
+      expr: |
+        (
+          sum by (job, instance, type) (
+            rate(promscale_ingest_requests_total{code=~"5.."}[5m])
+          )
+        /
+          sum by (job, instance, type) (
+            rate(promscale_ingest_requests_total[5m])
+          )
+        ) > 0.05
+      labels:
+        severity: warning
+      annotations:
+        summary: High error rate in Promscale ingestion.
+        description: "Promscale ingestion is having a {{ $value | humanizePercentage }} error rate."
+        runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleIngestHighErrorRate.md
+    - alert: PromscaleIngestHighErrorRate
+      expr: |
+        (
+          sum by (job, instance, type) (
+            rate(promscale_ingest_requests_total{code=~"5.."}[5m])
+          )
+        /
+          sum by (job, instance, type) (
+            rate(promscale_ingest_requests_total[5m])
+          )
+        ) > 0.1
+      labels:
+        severity: critical
+      annotations:
+        summary: High error rate in Promscale ingestion.
+        description: "Promscale ingestion is having a {{ $value | humanizePercentage }} error rate."
+        runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleIngestHighErrorRate.md
+    - alert: PromscaleIngestHighLatency
+      expr: |
+        (
+          histogram_quantile(
+            0.90,
+            sum by (job, instance, type, le) (
+              rate(promscale_ingest_duration_seconds_bucket[5m])
+            )
+          ) > 10
+        and
+          sum by (job, instance, type) (
+              rate(promscale_ingest_duration_seconds_bucket[5m])
+          )
+        ) > 0
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: Slow Promscale ingestion.
+        description: "Slowest 10% of ingestion batch took more than {{ $value }} seconds to ingest."
+        runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleIngestHighLatency.md
+    - alert: PromscaleIngestHighLatency
+      expr: |
+        (
+          histogram_quantile(
+            0.90,
+            sum by (job, instance, type, le) (
+              rate(promscale_ingest_duration_seconds_bucket[5m])
+            )
+          ) > 30
+        and
+          sum by (job, instance, type) (
+              rate(promscale_ingest_duration_seconds_bucket[5m])
+          )
+        ) > 0
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: Slow Promscale ingestion.
+        description: "Slowest 10% of ingestion batch took more than {{ $value }} seconds to ingest."
+        runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleIngestHighLatency.md
+  - name: promscale-query
+    rules:
+    - alert: PromscaleQueryHighErrorRate
+      expr: |
+        (
+          sum by (job, instance, type) (
+            rate(promscale_query_requests_total{code=~"5.."}[5m])
+          )
+        /
+          sum by (job, instance, type) (
+            rate(promscale_query_requests_total[5m])
+          )
+        ) > 0.05
+      labels:
+        severity: warning
+      annotations:
+        summary: High error rate in querying Promscale.
+        description: "Evaluating queries via Promscale has {{ $value | humanizePercentage }} error rate."
+        runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleQueryHighErrorRate.md
+    - alert: PromscaleQueryHighErrorRate
+      expr: |
+        (
+          sum by (job, instance, type) (
+            rate(promscale_query_requests_total{code=~"5.."}[5m])
+          )
+        /
+          sum by (job, instance, type) (
+            rate(promscale_query_requests_total[5m])
+          )
+        ) > 0.1
+      labels:
+        severity: critical
+      annotations:
+        summary: High error rate in querying Promscale.
+        description: "Evaluating queries via Promscale had {{ $value | humanizePercentage }} error rate."
+        runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleQueryHighErrorRate.md
+    - alert: PromscaleQueryHighLatency
+      expr: |
+        (
+          histogram_quantile(
+            0.90,
+            sum by (job, instance, type, le) (
+              rate(promscale_query_duration_seconds_bucket[5m])
+            )
+          ) > 5
+        and
+          sum by (job, instance, type) (
+            rate(promscale_query_duration_seconds_bucket[5m])
+          ) > 0
+        )
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: Slow Promscale querying.
+        description: "Slowest 10% of the queries took more than {{ $value }} seconds to evaluate."
+        runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleQueryHighLatency.md
+    - alert: PromscaleQueryHighLatency
+      expr: |
+        (
+          histogram_quantile(
+            0.90,
+            sum by (job, instance, type, le) (
+              rate(promscale_query_duration_seconds_bucket[5m])
+            )
+          ) > 10
+        and
+          sum by (job, instance, type) (
+            rate(promscale_query_duration_seconds_bucket[5m])
+          ) > 0
+        )
+      for: 5m
+      labels:
+        severity: critical
+      annotations:
+        summary: Slow Promscale querying.
+        description: "Slowest 10% of the queries took {{ $value }} seconds to evaluate."
+        runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleQueryHighLatency.md
+  - name: promscale-cache
+    rules:
+    - alert: PromscaleCacheHighNumberOfEvictions
+      expr: |
+        (
+          rate(promscale_cache_evictions_total[5m])
+          /
+          promscale_cache_capacity_elements
+        ) > 0.2
+      labels:
+        severity: warning
+      annotations:
+        summary: High cache eviction in Promscale.
+        description: "Promscale {{ $labels.name }} is evicting at {{ $value }} entries a second."
+        runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleCacheHighNumberOfEvictions.md
+  - name: promscale-database-connection
+    rules:
+    - alert: PromscaleDBHighErrorRate
+      expr: |
+        (
+          sum by (job) (
+            # Error counter exists for query, query_row & exec, and not for send_batch.
+            rate(promscale_database_request_errors_total{method=~"query.*|exec"}[5m])
+          )
+        /
+          sum by (job) (
+            rate(promscale_database_requests_total{method=~"query.*|exec"}[5m])
+          )
+        ) > 0.05
+      labels:
+        severity: warning
+      annotations:
+        summary: Promscale experiences a high error rate when connecting to the database.
+        description: "Promscale connection with the database has an error of {{ $value | humanizePercentage }}."
+        runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleDBHighErrorRate.md
+    - alert: PromscaleStorageHighLatency
+      expr: |
+        (
+          histogram_quantile(0.9,
+            sum by (le, job, type) (
+              rate(promscale_database_requests_duration_seconds_bucket[5m])
+            )
+          ) > 5
+        and
+          sum by (job, type) (
+            rate(promscale_database_requests_duration_seconds_count[5m])
+          ) > 0
+        )
+      labels:
+        severity: warning
+      annotations:
+        summary: Slow database response.
+        description: "Slowest 10% of database requests are taking more than {{ $value }} seconds to respond."
+        runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleStorageHighLatency.md
+  - name: promscale-database
+    rules:
+    - alert: PromscaleStorageUnhealthy
+      expr: |
+        (
+          sum by (job) (
+            rate(promscale_sql_database_health_check_errors_total[5m])
+          )
+        /
+          sum by (job) (
+            rate(promscale_sql_database_health_check_total[5m])
+          )
+        ) > 0.05
+      labels:
+        severity: warning
+      annotations:
+        summary: Promscale database is unhealthy.
+        description: "Promscale connection with the database has an error of {{ $value | humanizePercentage }}."
+        runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleStorageUnhealthy.md
+    - alert: PromscaleMaintenanceJobRunningTooLong
+      expr: |
+        (
+          (
+            (
+              time()
+            -
+              promscale_sql_database_worker_maintenance_job_start_timestamp_seconds
+            )
+              >
+                30 * 60 * 2 # 30 mins (we launch maintenance jobs scheduled at 30 mins) * 60 (to seconds) * 2 (wait max for 2 complete scans before firing alert).
+          )
+        and
+          promscale_sql_database_worker_maintenance_job_start_timestamp_seconds > 0
+        )
+      labels:
+        severity: warning
+      annotations:
+        summary: Promscale maintenance jobs taking too long to complete.
+        description: "Promscale Database is taking {{ $value }} seconds to respond to Promscale's requests."
+        runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleMaintenanceJobRunningTooLong.md
+    - alert: PromscaleMaintenanceJobNotKeepingup
+      expr: |
+        (
+            (
+              min_over_time(promscale_sql_database_chunks_metrics_uncompressed_count[1h]) > 10
+            )
+          and
+            (
+              delta(promscale_sql_database_chunks_metrics_uncompressed_count[10m]) > 0
+            )
+        )
+        or
+        (
+            (
+              min_over_time(promscale_sql_database_chunks_metrics_expired_count[1h]) > 10
+            )
+          and
+            (
+              delta(promscale_sql_database_chunks_metrics_expired_count[10m]) > 0
+            )
+        )      
+        or
+        (
+            (
+              min_over_time(promscale_sql_database_chunks_traces_uncompressed_count[1h]) > 10
+            )
+          and
+            (
+              delta(promscale_sql_database_chunks_traces_uncompressed_count[10m]) > 0
+            )
+        )      
+        or
+        (
+            (
+              min_over_time(promscale_sql_database_chunks_traces_expired_count[1h]) > 10
+            )
+          and
+            (
+              delta(promscale_sql_database_chunks_traces_expired_count[10m]) > 0
+            )
+        )      
+      labels:
+        severity: warning
+      annotations:
+        summary: Promscale maintenance jobs are not keeping up.
+        description: "The amount of work for the promscale maintenance {{ $labels.name }} job is not decreasing for long time."
+        runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleMaintenanceJobRunningTooLong.md
+    - alert: PromscaleMaintenanceJobFailures
+      expr: promscale_sql_database_worker_maintenance_job_failed == 1
+      labels:
+        severity: warning
+      annotations:
+        summary: Promscale maintenance job failed.
+        description: "Maintenance job for Promscale instance {{ $labels.instance }} failed to successfully execute."
+        runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleMaintenanceJobFailures.md
+    - alert: PromscaleCompressionLow
+      expr: |
+        (
+          (
+            (promscale_sql_database_chunks_count - promscale_sql_database_chunks_compressed_count) # Number of uncompressed chunks.
+          /
+            promscale_sql_database_metric_count
+          ) > 4 # If total number of average uncompressed chunk per metric is more than 4 chunks at maximum, we should alert.
+        and
+          promscale_sql_database_compression_status == 1
+        )
+      labels:
+        severity: warning
+      annotations:
+        summary: High uncompressed data.
+        description: "High uncompressed data in Promscale, on average, {{ $value }} uncompressed chunks per metric."
+        runbook_url: https://github.com/timescale/promscale/blob/master/docs/runbooks/PromscaleCompressionLow.md
+---
+# Source: tobs/charts/opentelemetry-operator/templates/servicemonitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: opentelemetry-operator
+  namespace: tobs
+  labels:
+    helm.sh/chart: opentelemetry-operator-0.13.0
+    app.kubernetes.io/name: opentelemetry-operator
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/version: "0.60.0"
+    app.kubernetes.io/managed-by: Helm
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: opentelemetry-operator
+      app.kubernetes.io/instance: release-name
+  endpoints:
+  - port: metrics
+  namespaceSelector:
+    matchNames:
+      - tobs
+---
+# Source: tobs/charts/promscale/templates/service-monitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: release-name-promscale
+  namespace: tobs
+  labels:
+    app: release-name-promscale
+    chart: promscale-14.2.0
+    release: release-name
+    heritage: Helm
+    app.kubernetes.io/name: "release-name-promscale"
+    app.kubernetes.io/version: 0.14.0
+    app.kubernetes.io/component: "connector"
+spec:
+  endpoints:
+  - interval: 30s
+    port: metrics-port
+    path: /metrics
+  selector:
+    matchLabels:
+      app: release-name-promscale
+      chart: promscale-14.2.0
+      release: release-name
+      heritage: Helm
+---
+# Source: tobs/charts/opentelemetry-operator/templates/admission-webhooks/operator-webhook-with-cert-manager.yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: tobs/opentelemetry-operator-serving-cert
+  labels:
+    app.kubernetes.io/name: opentelemetry-operator
+  name: opentelemetry-operator-validating-webhook-configuration
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: opentelemetry-operator-webhook-service
+        namespace: tobs
+        path: /validate-opentelemetry-io-v1alpha1-instrumentation
+    failurePolicy: Fail
+    name: vinstrumentationcreateupdate.kb.io
+    rules:
+    - apiGroups:
+        - opentelemetry.io
+      apiVersions:
+        - v1alpha1
+      operations:
+        - CREATE
+        - UPDATE
+      resources:
+        - instrumentations
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: opentelemetry-operator-webhook-service
+        namespace: tobs
+        path: /validate-opentelemetry-io-v1alpha1-instrumentation
+    failurePolicy: Ignore
+    name: vinstrumentationdelete.kb.io
+    rules:
+      - apiGroups:
+          - opentelemetry.io
+        apiVersions:
+          - v1alpha1
+        operations:
+          - DELETE
+        resources:
+          - instrumentations
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: opentelemetry-operator-webhook-service
+        namespace: tobs
+        path: /validate-opentelemetry-io-v1alpha1-opentelemetrycollector
+    failurePolicy: Fail
+    name: vopentelemetrycollectorcreateupdate.kb.io
+    rules:
+      - apiGroups:
+          - opentelemetry.io
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - opentelemetrycollectors
+    sideEffects: None
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: opentelemetry-operator-webhook-service
+        namespace: tobs
+        path: /validate-opentelemetry-io-v1alpha1-opentelemetrycollector
+    failurePolicy: Ignore
+    name: vopentelemetrycollectordelete.kb.io
+    rules:
+      - apiGroups:
+          - opentelemetry.io
+        apiVersions:
+          - v1alpha1
+        operations:
+          - DELETE
+        resources:
+          - opentelemetrycollectors
+    sideEffects: None
+---
+# Source: tobs/templates/tests/test-datasources.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: "release-name-test-datasource"
+  namespace: "tobs"
+  labels:
+    helm.sh/chart: tobs-15.1.1
+    app.kubernetes.io/name: tobs
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    "helm.sh/hook": test
+---
+# Source: tobs/templates/tests/test-metrics.yaml
+apiVersion: v1
+kind: ServiceAccount
+automountServiceAccountToken: false
+metadata:
+  name: "release-name-test-metrics"
+  namespace: "tobs"
+  labels:
+    helm.sh/chart: tobs-15.1.1
+    app.kubernetes.io/name: tobs
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    "helm.sh/hook": test
+---
+# Source: tobs/charts/timescaledb-single/templates/secret-certificate.yaml
+# This file and its contents are licensed under the Apache License 2.0.
+# Please see the included NOTICE for copyright information and LICENSE for a copy of the license.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: "release-name-certificate"
+  namespace: tobs
+  labels:
+    app: release-name-timescaledb
+    chart: timescaledb-single-0.17.0
+    release: release-name
+    heritage: Helm
+    cluster-name: release-name
+    app.kubernetes.io/name: "release-name-timescaledb"
+    app.kubernetes.io/version: 0.17.0
+    app.kubernetes.io/component: certificates
+  annotations:
+    "helm.sh/hook": pre-install,post-delete
+    "helm.sh/hook-weight": "0"
+type: kubernetes.io/tls
+stringData:
+  tls.crt: "-----BEGIN CERTIFICATE-----\nMIIDGTCCAgGgAwIBAgIQLeuqURtSqLhdyJDXEET/DTANBgkqhkiG9w0BAQsFADAX\nMRUwEwYDVQQDEwxyZWxlYXNlLW5hbWUwHhcNMjIxMDA3MjAzNzQwWhcNMjcxMDA3\nMjAzNzQwWjAXMRUwEwYDVQQDEwxyZWxlYXNlLW5hbWUwggEiMA0GCSqGSIb3DQEB\nAQUAA4IBDwAwggEKAoIBAQC1HJlWKq8y3nd9m3tmDV15EuE7XX11fOa4kcieBC2n\nVW8ChpfCEbJdVDfQuWEqMds/WavHjrMGCHQetTByeZh6AXxfSLyP0hWZShmVlK+W\nWiETEVvzo/MPqNbWlj89vhAAQTEWyhM2SlSDi7vnNzmsMJH7iOeedVE9EFlUmjuJ\nsvKeNrugc6yWhluTB1OWxBykPSts42t//J8S5NLp4OX5484bSkggbbaq6x+N0W9n\ngFL1cqURqYPs91IV0h/e0q78UoeXFMnMKm5thEi0BMw5b7tk3GOqjvnlDXHnTLET\nXybiwyGQpSg937zSqLXwlEGqbGEFlQjLs9ULMbrpGaTHAgMBAAGjYTBfMA4GA1Ud\nDwEB/wQEAwICpDAdBgNVHSUEFjAUBggrBgEFBQcDAQYIKwYBBQUHAwIwDwYDVR0T\nAQH/BAUwAwEB/zAdBgNVHQ4EFgQUFQvFWOtcTki7+qP97gTERMVOdTwwDQYJKoZI\nhvcNAQELBQADggEBAIBlNLmRn8363PKLiUw47ndWErFeSMBNPp/xA4FQwwCjpNOg\nroPWGTMQeNQBVQX1SX8E8rEzegiRDPJE1eL5zcoMgC7I55P2yjm5V0udKTtTC90Z\nKBxjYG6ct2Zlwv9xVAv1kF8VQfenr9PhtJ6Jo3YPRkILBHOIV7UhYiVDHUNb8Spz\nYKK8ac3PrUAlxPfX6oWqEDFUZ/ZnWu9KR2R7DHD+fENgM6IbO0SAblRDYcv1kh2r\n68uOe3AoG/pdd+oZFeOVYJYRXvXY/pDdYxkEq5mIDZUde7c3nmihx1Ay+BR4UNCk\ne5ispqSlbE+9l02H83a43dR3H+uri1ttj072hsc=\n-----END CERTIFICATE-----\n"
+  tls.key: "-----BEGIN RSA PRIVATE KEY-----\nMIIEogIBAAKCAQEAtRyZViqvMt53fZt7Zg1deRLhO119dXzmuJHIngQtp1VvAoaX\nwhGyXVQ30LlhKjHbP1mrx46zBgh0HrUwcnmYegF8X0i8j9IVmUoZlZSvllohExFb\n86PzD6jW1pY/Pb4QAEExFsoTNkpUg4u75zc5rDCR+4jnnnVRPRBZVJo7ibLynja7\noHOsloZbkwdTlsQcpD0rbONrf/yfEuTS6eDl+ePOG0pIIG22qusfjdFvZ4BS9XKl\nEamD7PdSFdIf3tKu/FKHlxTJzCpubYRItATMOW+7ZNxjqo755Q1x50yxE18m4sMh\nkKUoPd+80qi18JRBqmxhBZUIy7PVCzG66RmkxwIDAQABAoH/W0MOAV2A6yEvFRxE\nEiip8ViSJlf14D4QBPFxJi700l06kws/bYt9VYoalhLT4288C7Aj32sIywF3ggHL\nZ+Pd8ZzODzWXzuEOATBVtAo4cIr6H6GftCXpVPq/R2Jue65KYdZ35gPtqm3KKH9B\nMEGjziCrbxSNokt7pEmYugj992Ra7yF3Md7ZaDJkIHM4icpsP45AohDnNhZtIy8f\nkoUMvIN6OOFdZV+b2JgycReJ9o78CVp3vdtx42KvlkpNn4nBVpYjVcNdxbLPHvxd\nKsB3tl7TLfw8RzzCig1BwlxVj7eaZj6HuuzPE35qUWxE6J/gKR/8JJ/PWXVW0Ws1\nsMDhAoGBAMRZhb1KJf2hwAXdqpmpNOsonguEpT3oyBgFOGQYBcGGNfvpXt2fYOEA\naDg7LWeJhcoTIA5QM5KX1fKduUhEzYKQFHMV/+1sc16eCPu8y5iQEy+TUMfhh7C8\nLdoNkQ+EsgJgFaBCE/YkXNJBOReuxROKU9FRuLTvHbiCX33o+UCXAoGBAOwh/Zh7\nV4S7IgWvuU7J0MJGFTNgqkLeqlT+kh3wVPJUyyoJhQqzLo/F5A7w07Jsq0I+7GD8\nWcol1s6nxbYJd4X4dq9zYtlTrfhaza/jJhT5EBGsN2+acl9utFa8uXYNlQCO4znq\ncF+9n7VcLPbmu8NjkVOixpdi/+hjmKH+NxNRAoGAGG3y/9wr4eSwGYq84SV2WhPR\npik4zf0aeDKeE4YRoURrjw44KWbdDOGaFfT27zzjEoNSp7U+1WxiyC7rkJxO3YHD\nqZYBI68so4cSIxAYXMEAQhkYIeZjlY+0PL8XX1DpPPZremb+SM+5ZMeMrO+nwYii\naRa73ncpwX0nGGlWKb0CgYEA2+L7J9cTtIIeOHVedkPwpjhk3acSZZq7utIkdsSq\nFc9oMQkUXtZkcXWx3UfdmrUe9V1q+RWE930s/tu0fMNsDdFFlDQ6xG3r/u1vxG4d\ntEIJ+KsKJF8KSlvoiyzK92fGbPKiHfh2FHGcG2JubKyIBHbfiaZ2j9qcu2ajZ5Y2\n60ECgYEAtAVvK7d8IQF00OFQp9ia6ALP+KUGe6kOY52UnJDeKK13EEbO4sbUKr7j\nD6Mp5tYwWKietBTOE5HeAdRloATWTD3liUo6ZWeq5CJ37KC1OoxCIQ1qd4YhhFeP\nz8NNnc8arGaZHoDEtPUCWMWh62k8jL1noKRwkCnJo917AT41S80=\n-----END RSA PRIVATE KEY-----\n"
+...
+---
+# Source: tobs/charts/timescaledb-single/templates/secret-patroni.yaml
+# This file and its contents are licensed under the Apache License 2.0.
+# Please see the included NOTICE for copyright information and LICENSE for a copy of the license.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: "release-name-credentials"
+  namespace: tobs
+  labels:
+    app: release-name-timescaledb
+    chart: timescaledb-single-0.17.0
+    release: release-name
+    heritage: Helm
+    cluster-name: release-name
+    app.kubernetes.io/name: "release-name-timescaledb"
+    app.kubernetes.io/version: 0.17.0
+    app.kubernetes.io/component: patroni
+  annotations:
+    "helm.sh/hook": pre-install,post-delete
+    "helm.sh/hook-weight": "0"
+    "helm.sh/resource-policy": keep
+type: Opaque
+stringData:
+  PATRONI_SUPERUSER_PASSWORD: "glOkqOA53HUddWcr"
+  PATRONI_REPLICATION_PASSWORD: "YgInYHiCicii3tmz"
+  PATRONI_admin_PASSWORD: "LyvUnA6E3aENqFc3"
+...
+---
+# Source: tobs/charts/timescaledb-single/templates/secret-pgbackrest.yaml
+# This file and its contents are licensed under the Apache License 2.0.
+# Please see the included NOTICE for copyright information and LICENSE for a copy of the license.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: "release-name-pgbackrest"
+  namespace: tobs
+  labels:
+    app: release-name-timescaledb
+    chart: timescaledb-single-0.17.0
+    release: release-name
+    heritage: Helm
+    cluster-name: release-name
+    app.kubernetes.io/name: "release-name-timescaledb"
+    app.kubernetes.io/version: 0.17.0
+    app.kubernetes.io/component: pgbackrest
+  annotations:
+    "helm.sh/hook": pre-install,post-delete
+    "helm.sh/hook-weight": "0"
+    "helm.sh/resource-policy": keep
+type: Opaque
+stringData:
+  PGBACKREST_REPO1_S3_BUCKET: ""
+  PGBACKREST_REPO1_S3_ENDPOINT: s3.amazonaws.com
+  PGBACKREST_REPO1_S3_KEY: ""
+  PGBACKREST_REPO1_S3_KEY_SECRET: ""
+  PGBACKREST_REPO1_S3_REGION: ""
+...
+---
+# Source: tobs/templates/timescaledb-grafana-datasource.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: custom-secret-scripts
+  namespace: tobs
+  labels:
+    app: release-name-tobs
+    chart: tobs-15.1.1
+    release: release-name
+  annotations:
+    "helm.sh/hook": pre-install,post-delete
+    "helm.sh/hook-weight": "0"
+    "helm.sh/resource-policy": keep
+stringData:
+  GRAFANA_PASSWORD: "GjPx609s54krjpdg"
+  grafana-datasource-user.sql: |
+    \set ON_ERROR_STOP on
+    DO $$
+      BEGIN
+        CREATE ROLE prom_reader;
+      EXCEPTION WHEN duplicate_object THEN
+        RAISE NOTICE 'role prom_reader already exists, skipping create';
+      END
+    $$;
+    DO $$
+      BEGIN
+        CREATE ROLE grafana WITH LOGIN PASSWORD 'GjPx609s54krjpdg';
+      EXCEPTION WHEN duplicate_object THEN
+        RAISE NOTICE 'role grafana already exists, skipping create';
+      END
+    $$;
+    GRANT prom_reader TO grafana;
+---
+# Source: tobs/charts/promscale/templates/config.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: release-name-promscale
+  namespace: tobs
+  labels:
+    app: release-name-promscale
+    chart: promscale-14.2.0
+    release: release-name
+    heritage: Helm
+    app.kubernetes.io/name: "release-name-promscale"
+    app.kubernetes.io/version: 0.14.0
+    app.kubernetes.io/component: "connector"
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade,post-delete
+    "helm.sh/hook-weight": "0"
+data:
+  config.yaml: |
+
+    startup.dataset.config: |
+      metrics:
+        compress_data: true
+        default_retention_period: 90d
+      traces:
+        default_retention_period: 30d
+---
+# Source: tobs/templates/tests/test-datasources.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "release-name-test-datasource"
+  namespace: "tobs"
+  labels:
+    helm.sh/chart: tobs-15.1.1
+    app.kubernetes.io/name: tobs
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    "helm.sh/hook": test
+data:
+  test-datasources.sh: |-
+    
+    #!/bin/bash
+    
+    # set -euo pipefail
+    set -o pipefail
+    
+    : "${RELEASE:="tobs"}"
+    : "${NAMESPACE:="default"}"
+    : "${GRAFANA_USER:="admin"}"
+    
+    # use curl instead of kubectl to access k8s api. This way we don't need to use container image with kubectl in it.
+    TOKEN="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"
+    K8S_API_URI="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT_HTTPS}/api/v1/namespaces/${NAMESPACE}/secrets/${RELEASE}-grafana"
+    GRAFANA_PASS="$(
+        curl -s \
+            --header "Authorization: Bearer ${TOKEN}" \
+            --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+            "$K8S_API_URI" \
+        | jq -r '.data["admin-password"]' \
+        | base64 -d
+    )"
+    
+    GRAFANA_QUERY_URL="http://${GRAFANA_USER}:${GRAFANA_PASS}@${RELEASE}-grafana.${NAMESPACE}.svc:80/api/ds/query"
+    
+    function query() {
+        local uid="$1"
+        local query="$2"
+        local format="$3"
+        local body
+    
+        body=$(cat <<-EOM
+    {
+        "queries":[
+            {
+                "datasource":{
+                    "uid":"$uid"
+                },
+                "refId":"A",
+                "format":"$format",
+                "expr":"$query"
+            }
+        ],
+        "from":"now-5m",
+        "to":"now"
+    }
+    EOM
+    )
+    
+        curl -H "Content-Type: application/json" -X POST -d "$body" "${GRAFANA_QUERY_URL}" 2>/dev/null | jq '.results.A'
+    }
+    
+    SQL_QUERY="SELECT * FROM pg_extension WHERE extname = 'timescaledb_toolkit';"
+    RESULT_SQL=$(query "c4729dfb8ceeaa0372ef27403a3932695eee995d" "$SQL_QUERY" "table")
+    if [ "$(jq 'has("error")' <<< "${RESULT_SQL}")" == "true" ]; then
+        echo "GRAFANA SQL DATASOURCE CANNOT QUERY DATA DUE TO:"
+        jq '.error' <<< "${RESULT_SQL}"
+        exit 1
+    fi
+    
+    RESULT_PRM=$(query "dc08d25c8f267b054f12002f334e6d3d32a853e4" "ALERTS" "time_series")
+    if [ "$(jq 'has("error")' <<< "${RESULT_PRM}")" == "true" ]; then
+        echo "GRAFANA PROMQL DATASOURCE CANNOT QUERY DATA DUE TO:"
+        jq '.error' <<< "${RESULT_PRM}"
+        exit 1
+    fi
+    
+    echo "All queries passed"
+---
+# Source: tobs/templates/tests/test-metrics.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "release-name-test-metrics"
+  namespace: "tobs"
+  labels:
+    helm.sh/chart: tobs-15.1.1
+    app.kubernetes.io/name: tobs
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    "helm.sh/hook": test
+data:
+  test-metrics.sh: |-
+    
+    #!/bin/bash
+    
+    set -eu
+    
+    : "${NAMESPACE:="default"}"
+    : "${PROMQL_QUERY_URL:="http://tobs-promscale.default.svc:9201/api/v1/query"}"
+    : "${FEATURE_KUBE_PROMETHEUS:=0}"
+    : "${FEATURE_TIMESCALEDB:=0}"
+    : "${FEATURE_PROMSCALE:=0}"
+    
+    kubePrometheusTests=$(cat <<-EOF
+    {
+      "expression": "alertmanager_build_info{namespace=\"$NAMESPACE\"}",
+      "expected": true
+    },{
+      "expression": "node_exporter_build_info{namespace=\"$NAMESPACE\"}",
+      "expected": true
+    },{
+      "expression": "prometheus_build_info{namespace=\"$NAMESPACE\"}",
+      "expected": true
+    },{
+      "expression": "prometheus_operator_build_info{namespace=\"$NAMESPACE\"}",
+      "expected": true
+    }
+    EOF
+    )
+    promscaleTests=$(cat <<-EOF
+    {
+      "expression": "promscale_build_info{namespace=\"$NAMESPACE\"}",
+      "expected": true
+    }
+    EOF
+    )
+    timescaleTests=$(cat <<-EOF
+    {
+      "expression": "postgres_exporter_build_info{namespace=\"$NAMESPACE\"}",
+      "expected": true
+    }
+    EOF
+    )
+    genericTests=$(cat <<-EOF
+    {
+      "expression": "up{namespace=\"$NAMESPACE\"}==0",
+      "expected": false
+    }
+    EOF
+    )
+    
+    testset="$genericTests"
+    if [ $FEATURE_KUBE_PROMETHEUS -eq 1 ]; then
+      testset="$kubePrometheusTests,$testset"
+    fi
+    if [ $FEATURE_PROMSCALE -eq 1 ]; then
+      testset="$promscaleTests,$testset"
+    fi
+    if [ $FEATURE_TIMESCALEDB -eq 1 ]; then
+      testset="$timescaleTests,$testset"
+    fi
+    
+    testset="[ $testset ]"
+    
+    function query() {
+      local expr="$1"
+      curl -XPOST -G -H "Content-Type: application/x-www-form-urlencoded"  --data-urlencode "query=${expr}" "${PROMQL_QUERY_URL}" 2>/dev/null | jq '.data.result | length > 0'
+    }
+    
+    function singletest() {
+      local expr="$1"
+      local expected="$2"
+      local result
+    
+      local attempt=0
+      local max_attempts=9
+      local timeout=1
+    
+      echo "Testing ${expr}"
+    
+      while [[ "$attempt" -lt "$max_attempts" ]]; do
+        result=$(query "${expr}")
+        if [[ "${result}" == "${expected}" ]]; then
+          echo "PASSED"
+          return
+        fi
+        attempt=$(( attempt + 1 ))
+        timeout=$(( timeout * 2 ))
+        echo "RETRYING ${attempt}/${max_attempts}"
+        sleep "${timeout}"
+      done
+    
+      echo "FAILED"
+      exit 1
+    }
+    
+    for t in $(echo "${testset}" | jq -c '.[]'); do
+      expr=$(echo "${t}" | jq -r '.expression')
+      expected=$(echo "${t}" | jq -r '.expected')
+      singletest "${expr}" "${expected}"
+    done
+---
+# Source: tobs/templates/tests/test-datasources.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: "release-name-test-datasource"
+  namespace: "tobs"
+  labels:
+    helm.sh/chart: tobs-15.1.1
+    app.kubernetes.io/name: tobs
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    "helm.sh/hook": test
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  resourceNames:
+  - "release-name-grafana"
+---
+# Source: tobs/templates/tests/test-datasources.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: "release-name-test-datasource"
+  namespace: "tobs"
+  labels:
+    helm.sh/chart: tobs-15.1.1
+    app.kubernetes.io/name: tobs
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    "helm.sh/hook": test
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: "release-name-test-datasource"
+subjects:
+  - kind: ServiceAccount
+    name: "release-name-test-datasource"
+    namespace: "tobs"
+---
+# Source: tobs/charts/opentelemetry-operator/templates/tests/test-certmanager-connection.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "opentelemetry-operator-cert-manager-test-connection"
+  namespace: tobs
+  labels:
+    control-plane: controller-manager
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: wget
+      image: busybox
+      env:
+        - name: CERT_MANAGER_CLUSTERIP
+          value: "cert-manager-webhook"
+        - name: CERT_MANAGER_PORT
+          value: "443"
+      command:
+        - sh
+        - -c
+        # The following shell script tests if the cert-manager service is up. If the service is up, when we try
+        # to wget its exposed port, we will get an HTTP error 400.
+        - |
+          wget_output=$(wget -q "$CERT_MANAGER_CLUSTERIP:$CERT_MANAGER_PORT")
+          if wget_output=="wget: server returned error: HTTP/1.0 400 Bad Request"
+          then exit 0
+          else exit 1
+          fi
+  restartPolicy: Never
+---
+# Source: tobs/charts/opentelemetry-operator/templates/tests/test-service-connection.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "opentelemetry-operator-controller-manager-metrics-test-connection"
+  namespace: tobs
+  labels:
+    control-plane: controller-manager
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: wget
+      image: busybox
+      env:
+        - name: MANAGER_METRICS_SERVICE_CLUSTERIP
+          value: "opentelemetry-operator-controller-manager-metrics-service"
+        - name: MANAGER_METRICS_SERVICE_PORT
+          value: "8443"
+      command:
+        - sh
+        - -c
+        # The following shell script tests if the controller-manager-metrics-service is up.
+        # If the service is up, when we try to wget its exposed port, we will get an HTTP error 400.
+        - |
+          wget_output=$(wget -q "$MANAGER_METRICS_SERVICE_CLUSTERIP:$MANAGER_METRICS_SERVICE_PORT")
+          if wget_output=="wget: server returned error: HTTP/1.0 400 Bad Request"
+          then exit 0
+          else exit 1
+          fi
+  restartPolicy: Never
+---
+# Source: tobs/charts/opentelemetry-operator/templates/tests/test-service-connection.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "opentelemetry-operator-webhook-test-connection"
+  namespace: tobs
+  labels:
+    control-plane: controller-manager
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: wget
+      image: busybox
+      env:
+        - name: WEBHOOK_SERVICE_CLUSTERIP
+          value: "opentelemetry-operator-webhook-service"
+        - name: WEBHOOK_SERVICE_PORT
+          value: "443"
+      command:
+        - sh
+        - -c
+        # The following shell script tests if the webhook service is up. If the service is up, when we try
+        # to wget its exposed port, we will get an HTTP error 400.
+        - |
+          wget_output=$(wget -q "$WEBHOOK_SERVICE_CLUSTERIP:$WEBHOOK_SERVICE_PORT")
+          if wget_output=="wget: server returned error: HTTP/1.0 400 Bad Request"
+          then exit 0
+          else exit 1
+          fi
+  restartPolicy: Never
+---
+# Source: tobs/templates/tests/test-datasources.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "release-name-test-datasource"
+  labels:
+    helm.sh/chart: tobs-15.1.1
+    app.kubernetes.io/name: tobs
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: checker
+      # TODO(paulfantom): move image build to tobs repo
+      # Current multi-arch image is built from https://github.com/paulfantom/dockerfiles/blob/master/curl-jq/Dockerfile
+      image: quay.io/paulfantom/curl-jq
+      command:
+        - /bin/bash
+        - -c
+        - /usr/local/bin/test-datasources.sh
+      env:
+        - name: RELEASE
+          value: release-name
+        - name: NAMESPACE
+          value: tobs
+        - name: GRAFANA_USER
+          value: admin
+      volumeMounts:
+      - mountPath: /usr/local/bin/test-datasources.sh
+        name: test-datasources-bin
+        readOnly: true
+        subPath: test-datasources.sh
+  serviceAccountName: "release-name-test-datasource"
+  restartPolicy: Never
+  volumes:
+  - name: test-datasources-bin
+    configMap:
+      name: "release-name-test-datasource"
+      defaultMode: 0755
+---
+# Source: tobs/templates/tests/test-metrics.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "release-name-test-metrics"
+  labels:
+    helm.sh/chart: tobs-15.1.1
+    app.kubernetes.io/name: tobs
+    app.kubernetes.io/instance: release-name
+    app.kubernetes.io/managed-by: Helm
+  annotations:
+    "helm.sh/hook": test
+spec:
+  containers:
+    - name: checker
+      # TODO(paulfantom): move image build to tobs repo
+      # Current multi-arch image is built from https://github.com/paulfantom/dockerfiles/blob/master/curl-jq/Dockerfile
+      image: quay.io/paulfantom/curl-jq
+      command:
+        - /bin/bash
+        - -c
+        - /usr/local/bin/test-metrics.sh
+      env:
+        - name: NAMESPACE
+          value: tobs
+        - name: PROMQL_QUERY_URL
+          value: "http://release-name-promscale.tobs.svc:9201/api/v1/query"
+        - name: FEATURE_KUBE_PROMETHEUS
+          value: "0"
+        - name: FEATURE_TIMESCALEDB
+          value: "1"
+        - name: FEATURE_PROMSCALE
+          value: "1"
+      volumeMounts:
+      - mountPath: /usr/local/bin/test-metrics.sh
+        name: test-metrics-bin
+        readOnly: true
+        subPath: test-metrics.sh
+  serviceAccountName: "release-name-test-metrics"
+  restartPolicy: Never
+  volumes:
+  - name: test-metrics-bin
+    configMap:
+      name: "release-name-test-metrics"
+      defaultMode: 0755
+---
+# Source: tobs/charts/timescaledb-single/templates/job-update-patroni.yaml
+# This file and its contents are licensed under the Apache License 2.0.
+# Please see the included NOTICE for copyright information and LICENSE for a copy of the license.
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "release-name-patroni-p3"
+  namespace: tobs
+  labels:
+    app: release-name-timescaledb
+    chart: timescaledb-single-0.17.0
+    release: release-name
+    heritage: Helm
+    cluster-name: release-name
+    app.kubernetes.io/name: "release-name-timescaledb"
+    app.kubernetes.io/version: 0.17.0
+    app.kubernetes.io/component: patroni
+  annotations:
+    "helm.sh/hook": post-upgrade
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  activeDeadlineSeconds: 120
+  template:
+    metadata:
+      labels:
+        app: release-name-timescaledb
+        chart: timescaledb-single-0.17.0
+        release: release-name
+        heritage: Helm
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: release-name-timescaledb-patch-patroni-config
+        image: curlimages/curl
+        command: ["/bin/sh"]
+        # Patching the Patroni configuration is good, however it should not block an upgrade from going through
+        # Therefore we ensure we always exit with an exitcode 0, so that Helm is satisfied with this upgrade job
+        args:
+        - '-c'
+        - |
+          /usr/bin/curl --connect-timeout 30 --include --request PATCH --data \
+          "{\"loop_wait\":10,\"maximum_lag_on_failover\":33554432,\"postgresql\":{\"parameters\":{\"archive_command\":\"/etc/timescaledb/scripts/pgbackrest_archive.sh %p\",\"archive_mode\":\"on\",\"archive_timeout\":\"1800s\",\"autovacuum_analyze_scale_factor\":0.02,\"autovacuum_max_workers\":10,\"autovacuum_naptime\":\"5s\",\"autovacuum_vacuum_cost_limit\":500,\"autovacuum_vacuum_scale_factor\":0.05,\"hot_standby\":\"on\",\"log_autovacuum_min_duration\":\"1min\",\"log_checkpoints\":\"on\",\"log_connections\":\"on\",\"log_disconnections\":\"on\",\"log_line_prefix\":\"%t [%p]: [%c-%l] %u@%d,app=%a [%e] \",\"log_lock_waits\":\"on\",\"log_min_duration_statement\":\"1s\",\"log_statement\":\"ddl\",\"max_connections\":100,\"max_prepared_transactions\":150,\"shared_preload_libraries\":\"timescaledb,pg_stat_statements\",\"ssl\":\"on\",\"ssl_cert_file\":\"/etc/certificate/tls.crt\",\"ssl_key_file\":\"/etc/certificate/tls.key\",\"tcp_keepalives_idle\":900,\"tcp_keepalives_interval\":100,\"temp_file_limit\":\"1GB\",\"timescaledb.passfile\":\"../.pgpass\",\"unix_socket_directories\":\"/var/run/postgresql\",\"unix_socket_permissions\":\"0750\",\"wal_level\":\"hot_standby\",\"wal_log_hints\":\"on\"},\"use_pg_rewind\":true,\"use_slots\":true},\"retry_timeout\":10,\"ttl\":30}" \
+          "http://release-name-config:8008/config"
+          exit 0
+---
+# Source: tobs/templates/otel-auto-instrumentation.yaml
+apiVersion: opentelemetry.io/v1alpha1
+kind: Instrumentation
+metadata:
+  name: release-name-auto-instrumentation
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade,pre-delete
+    "helm.sh/hook-weight": "0"
+spec:
+  exporter:
+    endpoint: http://release-name-opentelemetry-collector.tobs.svc:4318
+  propagators:
+    - tracecontext
+    - baggage
+    - b3
+  python:
+    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-python:0.32b0
+  java:
+    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:1.18.0
+  nodejs:
+    image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-nodejs:0.31.0
+  sampler:
+    type: parentbased_traceidratio
+    argument: "0.25"
+---
+# Source: tobs/templates/otel-collector.yaml
+apiVersion: opentelemetry.io/v1alpha1
+kind: OpenTelemetryCollector
+metadata:
+  name: release-name-opentelemetry
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade,pre-delete
+    "helm.sh/hook-weight": "0"
+spec:
+  config:
+    
+    |
+      receivers:
+        jaeger:
+          protocols:
+            grpc:
+            thrift_http:
+    
+        otlp:
+          protocols:
+            grpc:
+            http:
+    
+      exporters:
+        logging:
+        otlp:
+          endpoint: "release-name-promscale.tobs.svc:9202"
+          compression: none
+          tls:
+            insecure: true
+        prometheusremotewrite:
+          endpoint: "http://release-name-promscale.tobs.svc:9201/write"
+          tls:
+            insecure: true
+    
+      processors:
+        batch:
+    
+      service:
+        pipelines:
+          traces:
+            receivers: [jaeger, otlp]
+            exporters: [logging, otlp]
+            processors: [batch]
+          metrics:
+            receivers: [otlp]
+            processors: [batch]
+            exporters: [prometheusremotewrite]
+---
+# Source: tobs/templates/postgres-exporter-promrule.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: release-name-postgres-exporter
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade,pre-delete
+    "helm.sh/hook-weight": "0"
+  labels:
+    app: release-name-tobs
+    chart: tobs-15.1.1
+    release: release-name
+    heritage: Helm
+    app.kubernetes.io/component: postgres-exporter
+    app.kubernetes.io/instance: tobs.release-name-postgres-exporter
+    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/part-of: tobs
+spec:
+  groups:
+  - name: PostgreSQL
+    rules:
+    - alert: PostgreSQLMaxConnectionsReached
+      annotations:
+        description: '{{ $labels.instance }} is exceeding the currently configured maximum
+          Postgres connection limit (current value: {{ $value }}s). Services may be
+          degraded - please take immediate action (you probably need to increase max_connections
+          in the Docker image and re-deploy.'
+        summary: '{{ $labels.instance }} has maxed out Postgres connections.'
+      expr: |
+        sum by (instance) (pg_stat_activity_count{})
+        >=
+        sum by (instance) (pg_settings_max_connections{})
+        -
+        sum by (instance) (pg_settings_superuser_reserved_connections{})
+      for: 1m
+      labels:
+        severity: warning
+    - alert: PostgreSQLHighConnections
+      annotations:
+        description: '{{ $labels.instance }} is exceeding 80% of the currently configured
+          maximum Postgres connection limit (current value: {{ $value }}s). Please check
+          utilization graphs and confirm if this is normal service growth, abuse or
+          an otherwise temporary condition or if new resources need to be provisioned
+          (or the limits increased, which is mostly likely).'
+        summary: '{{ $labels.instance }} is over 80% of max Postgres connections.'
+      expr: |
+        sum by (instance) (pg_stat_activity_count{})
+        >
+        (
+          sum by (instance) (pg_settings_max_connections{})
+          -
+          sum by (instance) (pg_settings_superuser_reserved_connections{})
+        ) * 0.8
+      for: 10m
+      labels:
+        severity: warning
+    - alert: PostgreSQLDown
+      annotations:
+        description: '{{ $labels.instance }} is rejecting query requests from the exporter,
+          and thus probably not allowing DNS requests to work either. User services
+          should not be effected provided at least 1 node is still alive.'
+        summary: 'PostgreSQL is not processing queries: {{ $labels.instance }}'
+      expr: pg_up{} != 1
+      for: 1m
+      labels:
+        severity: warning
+    - alert: PostgreSQLSlowQueries
+      annotations:
+        description: 'PostgreSQL high number of slow queries {{ $labels.cluster }} for
+          database {{ $labels.datname }} with a value of {{ $value }} '
+        summary: 'PostgreSQL high number of slow on {{ $labels.cluster }} for database
+          {{ $labels.datname }} '
+      expr: |
+        avg by (datname) (
+          rate (
+            pg_stat_activity_max_tx_duration{datname!~"template.*",}[2m]
+          )
+        ) > 2 * 60
+      for: 2m
+      labels:
+        severity: warning
+    - alert: PostgreSQLQPS
+      annotations:
+        description: PostgreSQL high number of queries per second on {{ $labels.cluster
+          }} for database {{ $labels.datname }} with a value of {{ $value }}
+        summary: PostgreSQL high number of queries per second {{ $labels.cluster }}
+          for database {{ $labels.datname }}
+      expr: |
+        avg by (datname) (
+          irate(
+            pg_stat_database_xact_commit{datname!~"template.*",}[5m]
+          )
+          +
+          irate(
+            pg_stat_database_xact_rollback{datname!~"template.*",}[5m]
+          )
+        ) > 10000
+      for: 5m
+      labels:
+        severity: warning
+    - alert: PostgreSQLCacheHitRatio
+      annotations:
+        description: PostgreSQL low on cache hit rate on {{ $labels.cluster }} for database
+          {{ $labels.datname }} with a value of {{ $value }}
+        summary: PostgreSQL low cache hit rate on {{ $labels.cluster }} for database
+          {{ $labels.datname }}
+      expr: |
+        avg by (datname) (
+          rate(pg_stat_database_blks_hit{datname!~"template.*",}[5m])
+          /
+          (
+            rate(
+              pg_stat_database_blks_hit{datname!~"template.*",}[5m]
+            )
+            +
+            rate(
+              pg_stat_database_blks_read{datname!~"template.*",}[5m]
+            )
+          )
+        ) < 0.98
+      for: 5m
+      labels:
+        severity: warning
+---
+# Source: tobs/templates/otel-collector-service-monitor.yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: release-name-otel-collector
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade,pre-delete
+    "helm.sh/hook-weight": "0"
+  labels:
+    app: release-name-tobs
+    chart: tobs-15.1.1
+    release: release-name
+    heritage: Helm
+    app.kubernetes.io/component: opentelemetry-collector
+    app.kubernetes.io/instance: tobs.release-name-opentelemetry
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: tobs
+spec:
+  endpoints:
+  - interval: 30s
+    port: monitoring
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: opentelemetry-collector
+      app.kubernetes.io/instance: default.release-name-opentelemetry
+      app.kubernetes.io/managed-by: opentelemetry-operator
+      app.kubernetes.io/name: release-name-opentelemetry-collector-monitoring
+      app.kubernetes.io/part-of: opentelemetry

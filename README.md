@@ -1,35 +1,86 @@
-### to get it back to a “good” state:
+# Benchmarking
 
+Install the operators (jaeger, ES, etc.).
+
+## Elastic Search
+
+### Install ES
 ```
-kubectl delete -f tracegen.yaml,jaeger.yaml,es.yaml
 kubectl apply -f es.yaml
-sed -i -E "s/password: .*/password: `kubectl get secret elasticsearch-sample-es-elastic-user -o jsonpath="{.data.elastic}" | base64 --decode`/" jaeger.yaml
-kubectl apply -f jaeger.yaml
+sed -i -E "s/password: .*/password: `kubectl get secret elasticsearch-sample-es-elastic-user -n default -o jsonpath="{.data.elastic}" | base64 --decode`/" jaeger-es.yaml
+kubectl apply -f jaeger-es.yaml
 ```
 
-Then you want to edit tracegen.yaml to either point to http://simple-prod-collector:14268/api/traces or 
-http://tobs-opentelemetry-collector.tobs:14268/api/traces
+### Install Jaeger for ES
+```
+kubectl apply -f jaeger-es.yaml
+```
 
-Then apply that too
+After Jaeger created all the pods, set the replicas to 0 for the `jaeger-operator`.
 
-### port forwarding:
-`kubectl port-forward svc/quickstart-kb-http 5601` will get you Kibana, good to see if data ingestion via Jaeger 
-is even working
-`kubectl port-forward svc/tobs-grafana 3000:80`  will get you grafana (password can be found via 
-`kubectl get secret --namespace tobs tobs-grafana -o jsonpath="{.data.admin-password}" | base64 --decode`
+Manually these args to the `jaeger-collector` pod in the `simple-prod-collector` deployment:
+```
+- '--collector.num-workers=1000'
+- '--collector.queue-size=100000'
+```
 
-Promscale logs will show you data flowing through there
+### Start Tracegen
+```
+kubectl delete -f tracegen/synthetic-load-gen.yaml
+```
 
-That Grafana will automatically get both Jaeger and Promscale metrics - so you can graph the throughput
+### Get service hostname
+```
+kubectl get svc simple-prod-query -o json | jq -r '.status.loadBalancer.ingress[0].hostname'
+```
 
-I would probably leave the tobs schema as is, and then create another collector/promscale/postgres (without 
-prometheus or node-exporter etc…) to use for the Jaeger backend
+### Run query benchmark
+Update the URL in `main.go` with the response from the query above
+```
+cd go-get-latency
+go run .
+```
 
-I think you’ll also need to inject pod-anti-affinity rules (maybe just manually?) to make sure we get valid 
-results
+## Promscale
 
-Any Q’s ask me early, always here to help (and love this stuff too so keen to help)
+### Install tobs
+```
+kubectl create ns tobs
+helm upgrade --install tobs timescale/tobs -f helm/values.yaml -n tobs
+```
 
+### Install Jaeger for Promscale
+```
+kubectl apply -f jaeger-promscale.yaml
+```
 
-            - name: GRPC_STORAGE_SERVER
-              value: tobs-promscale.tobs:9202
+After Jaeger created all the pods, set the replicas to 0 for the `jaeger-operator`.
+
+Manually env vars to the `jaeger-collector` and `jaeger-query` pod in the `simple-prod-collector` deployment and `simple-prod-query` deployment respectively:
+```
+- name: GRPC_STORAGE_SERVER
+  value: tobs-promscale.tobs:9202
+```
+
+Manually these args to the `jaeger-collector` pod in the `simple-prod-collector` deployment:
+```
+- '--collector.num-workers=1000'
+- '--collector.queue-size=100000'
+```
+
+### Start Tracegen
+```
+kubectl delete -f tracegen/synthetic-load-gen.yaml
+```
+
+### Get service hostname
+```
+kubectl get svc simple-prod-query -o json | jq -r '.status.loadBalancer.ingress[0].hostname'
+```
+
+### Run query benchmark
+Update the URL in `main.go` with the response from the query above
+```
+cd go-get-latency
+go run .
+```

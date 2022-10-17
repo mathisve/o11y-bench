@@ -1,0 +1,46 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: jaeger
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: jaeger
+  podMetricsEndpoints:
+  - port: admin-http
+    interval: 1s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: promscale
+  namespace: tobs
+spec:
+  endpoints:
+  - interval: 1s
+    port: metrics-port
+    path: /metrics
+  selector:
+    matchLabels:
+      app: tobs-promscale
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: prometheus-k8s
+  namespace: tobs
+rules:
+- apiGroups: [""] 
+  resources: ["pods","services","namespaces","deployments","jobs", "endpoints"] 
+  verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: prometheus-k8s
+  namespace: default
+rules:
+- apiGroups: [""] 
+  resources: ["pods","services","namespaces","deployments","jobs", "endpoints"] 
+  verbs: ["get", "watch", "list"]

@@ -1,0 +1,89 @@
+Summary:
+  Total:        349.0931 secs
+  Slowest:      19.9816 secs
+  Fastest:      0.0676 secs
+  Average:      2.6580 secs
+  Requests/sec: 28.6457
+  
+
+Response time histogram:
+  0.068 [1]     |
+  2.059 [7386]  |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  4.050 [809]   |■■■■
+  6.042 [117]   |■
+  8.033 [591]   |■■■
+  10.025 [264]  |■
+  12.016 [66]   |
+  14.007 [146]  |■
+  15.999 [225]  |■
+  17.990 [42]   |
+  19.982 [23]   |
+
+
+Latency distribution:
+  10% in 0.3327 secs
+  25% in 1.2177 secs
+  50% in 1.5855 secs
+  75% in 2.0134 secs
+  90% in 7.6037 secs
+  95% in 10.7405 secs
+  99% in 15.2001 secs
+
+Details (average, fastest, slowest):
+  DNS+dialup:   0.0046 secs, 0.0676 secs, 19.9816 secs
+  DNS-lookup:   0.0006 secs, 0.0000 secs, 0.0555 secs
+  req write:    0.0001 secs, 0.0000 secs, 0.0199 secs
+  resp wait:    2.6516 secs, 0.0668 secs, 19.9805 secs
+  resp read:    0.0005 secs, 0.0000 secs, 0.1372 secs
+
+Status code distribution:
+  [200] 8291 responses
+  [500] 1379 responses
+
+Error distribution:
+  [330] Get "http://ac5a5f124960b41a28a5f487ea52bb27-223003468.us-east-1.elb.amazonaws.com:16686/api/traces?end=1665605526162000&limit=20&lookback=5m&maxDuration=&minDuration=&operation=lets-go&service=tracegen&start=1665605226162000": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
+
+  
+
+
+Summary:
+  Total:        100.1041 secs
+  Slowest:      1.0494 secs
+  Fastest:      0.0659 secs
+  Average:      0.1061 secs
+  Requests/sec: 99.8960
+  
+
+Response time histogram:
+  0.066 [1]     |
+  0.164 [9560]  |■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■
+  0.263 [70]    |
+  0.361 [52]    |
+  0.459 [114]   |
+  0.558 [64]    |
+  0.656 [38]    |
+  0.754 [32]    |
+  0.853 [37]    |
+  0.951 [31]    |
+  1.049 [1]     |
+
+
+Latency distribution:
+  10% in 0.0757 secs
+  25% in 0.0811 secs
+  50% in 0.0877 secs
+  75% in 0.0944 secs
+  90% in 0.1092 secs
+  95% in 0.1460 secs
+  99% in 0.6892 secs
+
+Details (average, fastest, slowest):
+  DNS+dialup:   0.0031 secs, 0.0659 secs, 1.0494 secs
+  DNS-lookup:   0.0000 secs, 0.0000 secs, 0.0053 secs
+  req write:    0.0001 secs, 0.0000 secs, 0.0098 secs
+  resp wait:    0.1016 secs, 0.0644 secs, 1.0492 secs
+  resp read:    0.0009 secs, 0.0000 secs, 0.0145 secs
+
+Status code distribution:
+  [400] 10000 responses
+

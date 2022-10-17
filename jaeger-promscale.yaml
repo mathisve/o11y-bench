@@ -4,6 +4,20 @@ metadata:
   name: simple-prod
 spec:
   strategy: production
+  query:
+    replicas: 1
+    serviceType: LoadBalancer
+    resources:
+      requests:
+        cpu: 4000m
+        memory: 2Gi
+  collector:
+    replicas: 4
+    autoscale: false
+    resources:
+      requests:
+        cpu: 4000m
+        memory: 2Gi
   storage:
     type: grpc-plugin # <1>
     grpcPlugin:

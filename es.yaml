@@ -26,14 +26,14 @@ spec:
         - name: elasticsearch
           resources:
             requests: 
-              memory: 30Gi
+              memory: 25Gi
               cpu: 10
             limits:
-              memory: 40Gi
+              memory: 30Gi
               cpu: 15
           env:
           - name: ES_JAVA_OPTS
-            value: "-Xms30g -Xmx30g"
+            value: "-Xms25g -Xmx25g"
 
     count: 3
   #   # request 2Gi of persistent data storage for pods in this topology element

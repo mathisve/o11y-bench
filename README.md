@@ -70,7 +70,8 @@ Manually add these args to the `jaeger-collector` pod in the `simple-prod-collec
 
 ### Start Tracegen
 ```
-kubectl delete -f tracegen/synthetic-load-gen.yaml
+kubectl apply -f tracegen/namespace.yaml
+kubectl apply -f tracegen/synthetic-load-gen.yaml
 ```
 
 ### Get service hostname

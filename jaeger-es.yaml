@@ -27,7 +27,7 @@ spec:
         server-urls: https://elasticsearch-sample-es-http:9200
         tls.skip-host-verify: true
         username: elastic
-        password: 9wq50F79vDy91U6csklT5li7
+        password: 16XkXpJgJiP5451V600ISe1B
   volumeMounts:
     - name: secrets
       mountPath: /es/secrets/
